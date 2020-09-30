@@ -49,7 +49,7 @@ class AcmWrapper(object):
         max_status_checks = 30
         status_check_interval = 60
 
-        # wait for stack "final" state
+        # wait for certificate issuance
         status_check = 0
         self._logger.info('Waiting on ACM certificate issuance confirmation. This may take up to 30 minutes...')
 
