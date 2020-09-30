@@ -18,6 +18,9 @@ class Route_53_Wrapper(object):
         return self._r53_client.create_hosted_zone(
             Name=dns_domain, CallerReference=caller_reference)
 
+    def delete_hosted_zone_by_name(self, dns_domain):
+        return self._r53_client.delete_hosted_zone(Id=self.get_hosted_zone_id(dns_domain))
+
     def get_hosted_zone(self, hosted_zone_id):
         return self._r53_client.get_hosted_zone(Id=hosted_zone_id)
 
