@@ -18,6 +18,13 @@ setup(
     url="https://github.com/mxmader/madeira",
     author='Joe Mader',
     author_email='jmader@jmader.com',
+    license="MIT",
+    classifiers=[
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+    ],
     packages=find_packages(exclude=['*.tests', '*.tests.*']),
     install_requires=[
         'boto3',
