@@ -1,5 +1,6 @@
 import madeira
 import boto3
+
 import uuid
 
 
@@ -13,8 +14,12 @@ class Route_53_Wrapper(object):
     def create_hosted_zone(self, dns_domain, caller_reference=None):
         caller_reference = caller_reference if caller_reference else uuid.uuid4().hex
         self._logger.debug('Creating hosted zone for DNS domain: %s', dns_domain)
-        self._r53_client.create_hosted_zone(
+
+        return self._r53_client.create_hosted_zone(
             Name=dns_domain, CallerReference=caller_reference)
+
+    def get_hosted_zone(self, hosted_zone_id):
+        return self._r53_client.get_hosted_zone(Id=hosted_zone_id)
 
     def get_hosted_zone_id(self, dns_domain):
         self._logger.debug('Looking up hosted zone ID for domain: %s', dns_domain)
@@ -25,5 +30,5 @@ class Route_53_Wrapper(object):
         self._logger.debug('No hosted zone found')
 
     def get_domain_ns_records(self, hosted_zone_id):
-        hosted_zone = self._r53_client.get_hosted_zone(Id=hosted_zone_id)
+        hosted_zone = self.get_hosted_zone(hosted_zone_id)
         return hosted_zone['DelegationSet']['NameServers']
