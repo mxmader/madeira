@@ -8,7 +8,7 @@ import boto3
 import hashlib
 
 
-class S3_Wrapper(object):
+class S3Wrapper(object):
     def __init__(self, logger=None):
         self._s3_client = boto3.client("s3")
         self._s3_resource = boto3.resource("s3")
@@ -91,12 +91,12 @@ class S3_Wrapper(object):
             self._s3_resource.meta.client.head_bucket(Bucket=bucket_name)
             return True
         except botocore.exceptions.ClientError as e:
-            # If a client error is thrown, then check that it was a 404 error.
-            # If it was a 404 error, then the bucket does not exist.
-            error_code = e.response["Error"]["Code"]
-            if error_code == "404":
+            error_code = e.response.get("Error", {}).get("Code")
+
+            if error_code == "403":  # bucket exists, but we don't have permissions to it
+                return True
+            elif error_code == "404":
                 return False
-            # something else went wrong when checking for the bucket's existence
             else:
                 raise e
 
