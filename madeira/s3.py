@@ -8,11 +8,11 @@ import boto3
 import hashlib
 
 
-class S3Wrapper(object):
+class S3(object):
     def __init__(self, logger=None):
         self._s3_client = boto3.client("s3")
         self._s3_resource = boto3.resource("s3")
-        self._sts_wrapper = sts.StsWrapper()
+        self._sts_wrapper = sts.Sts()
         self._logger = logger if logger else madeira.get_logger()
 
     @staticmethod

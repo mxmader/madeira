@@ -4,13 +4,13 @@ import boto3
 import time
 
 
-class AthenaWrapper(object):
+class Athena(object):
 
     def __init__(self, logger=None):
         self._athena_client = boto3.client('athena')
-        self._kms_wrapper = kms.KmsWrapper()
-        self._sts_wrapper = sts.StsWrapper()
-        self._session_wrapper = session.SessionWrapper()
+        self._kms_wrapper = kms.Kms()
+        self._sts_wrapper = sts.Sts()
+        self._session_wrapper = session.Session()
         self._logger = logger if logger else madeira.get_logger()
         self._max_query_checks = 10
         self._interval = 3

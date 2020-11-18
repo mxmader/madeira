@@ -3,7 +3,7 @@ import boto3
 import time
 
 
-class AcmWrapper(object):
+class Acm(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
         self._session = boto3.session.Session(

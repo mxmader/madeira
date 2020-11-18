@@ -4,13 +4,13 @@ import boto3
 import time
 
 
-class StepFunctionsWrapper:
+class StepFunctions:
 
     def __init__(self, logger=None):
         self._step_functions_client = boto3.client('stepfunctions')
         self._logger = logger if logger else madeira.get_logger()
-        self._session_wrapper = session.SessionWrapper()
-        self._sts_wrapper = sts.StsWrapper()
+        self._session_wrapper = session.Session()
+        self._sts_wrapper = sts.Sts(logger=logger)
 
     def create_state_machine(self, name, definition, role_arn, attempt=1):
         if attempt > 10:

@@ -2,7 +2,7 @@ import madeira
 import boto3
 
 
-class LogsWrapper(object):
+class Logs(object):
 
     def __init__(self, logger=None, region=None):
         self._logs_client = boto3.client('logs', region_name=region)

@@ -2,7 +2,7 @@ import madeira
 import boto3
 
 
-class KmsWrapper(object):
+class Kms(object):
 
     def __init__(self, logger=None, region=None):
         self._kms_client = boto3.client('kms', region_name=region)

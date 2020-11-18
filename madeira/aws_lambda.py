@@ -13,11 +13,11 @@ import madeira
 from madeira import sts
 
 
-class LambdaWrapper:
+class AwsLambda:
 
     def __init__(self, logger=None):
         self._lambda_client = boto3.client('lambda')
-        self._sts_wrapper = sts.StsWrapper()
+        self._sts_wrapper = sts.Sts()
         self._logger = logger if logger else madeira.get_logger()
 
     @staticmethod

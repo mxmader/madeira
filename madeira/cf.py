@@ -4,7 +4,7 @@ import botocore.exceptions
 import time
 
 
-class CloudFormationWrapper(object):
+class CloudFormation(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
         self._session = boto3.session.Session(

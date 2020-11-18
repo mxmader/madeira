@@ -2,7 +2,7 @@ import madeira
 import boto3
 
 
-class RdsClusterWrapper(object):
+class RdsCluster(object):
 
     def __init__(self, logger=None):
         self._logger = logger if logger else madeira.get_logger()

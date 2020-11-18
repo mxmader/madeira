@@ -4,7 +4,7 @@ import boto3
 import uuid
 
 
-class Route_53_Wrapper(object):
+class Route_53(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
         self._logger = logger if logger else madeira.get_logger()

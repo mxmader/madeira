@@ -1,7 +1,7 @@
 import boto3
 
 
-class RedshiftWrapper(object):
+class Redshift(object):
     def __init__(self):
         self.client = boto3.client('redshift')
 

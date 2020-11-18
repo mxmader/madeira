@@ -8,7 +8,7 @@ import string
 
 # All AWS SDK calls presume that ~/.aws/credentials has been pre-configured and uses an
 # access key with appropriate permissions via attached IAM roles + policies
-class SecretsManagerWrapper(object):
+class SecretsManager(object):
 
     def __init__(self, logger=None, region_name=None):
         self._logger = logger if logger else madeira.get_logger()

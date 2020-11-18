@@ -3,7 +3,7 @@ from madeira import secrets_manager
 import psycopg2.extras
 
 
-class PostgresWrapper(object):
+class Postgres(object):
 
     def __init__(self, credentials, init_cursors=True, logger=None, region_name=None):
         self._logger = logger if logger else madeira.get_logger()
@@ -13,7 +13,7 @@ class PostgresWrapper(object):
             self.credentials = credentials
         else:
             self._logger.debug(f'Fetching DB creds from AWS Secrets Manager using ID: {credentials}')
-            secrets_manager_wrapper = secrets_manager.SecretsManagerWrapper(logger=logger, region_name=region_name)
+            secrets_manager_wrapper = secrets_manager.SecretsManager(logger=logger, region_name=region_name)
             self.credentials = secrets_manager_wrapper.get_secret(credentials)
 
         self.connection = None

@@ -1,7 +1,7 @@
 import boto3
 
 
-class SessionWrapper(object):
+class Session(object):
 
     def __init__(self):
         self._session = boto3.Session()

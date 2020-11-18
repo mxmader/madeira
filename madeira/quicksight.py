@@ -4,7 +4,7 @@ import boto3
 import time
 
 
-class QuicksightWrapper(object):
+class Quicksight(object):
 
     DASHBOARD_ACTIONS = [
         "quicksight:DescribeDashboard",
@@ -49,7 +49,7 @@ class QuicksightWrapper(object):
             profile_name=profile_name, region_name=region
         )
         self._quicksight_client = self._session.client("quicksight", region_name=region)
-        self._sts_wrapper = sts.StsWrapper(profile_name=profile_name, region=region)
+        self._sts_wrapper = sts.Sts(profile_name=profile_name, region=region)
         self._account_id = self._sts_wrapper.get_account_id()
         self._logger = logger if logger else madeira.get_logger()
         self._max_status_checks = 20

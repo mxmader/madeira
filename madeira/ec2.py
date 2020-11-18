@@ -3,7 +3,7 @@ import boto3
 import botocore.exceptions
 
 
-class Ec2Wrapper(object):
+class Ec2(object):
     def __init__(self, logger=None):
         self._logger = logger if logger else madeira.get_logger()
         self._ec2_client = boto3.client("ec2")

@@ -3,11 +3,11 @@ import madeira
 import boto3
 
 
-class GlueWrapper(object):
+class Glue(object):
 
     def __init__(self, logger=None, region=None):
         self._glue_client = boto3.client('glue', region_name=region)
-        self._kms_wrapper = kms.KmsWrapper()
+        self._kms_wrapper = kms.Kms()
         self._logger = logger if logger else madeira.get_logger()
 
     def create_database(self, database):
