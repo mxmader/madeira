@@ -21,7 +21,7 @@ class Acm(object):
             return
 
         self._logger.info("Deleting certificate for domain: %s with ARN: %s", domain_name, certificate_arn)
-        self._acm_client.delete_certificate(CertificateArn=certificate_arn)
+        return self._acm_client.delete_certificate(CertificateArn=certificate_arn)
 
     def get_cert_arn_by_domain(self, domain_name):
         for cert in self._acm_client.list_certificates().get('CertificateSummaryList'):

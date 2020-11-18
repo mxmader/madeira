@@ -27,7 +27,6 @@ setup(
     ],
     packages=find_packages(exclude=['*.tests', '*.tests.*']),
     install_requires=[
-        'boto3',
-        'psycopg2-binary'
+        'boto3'
     ]
 )
