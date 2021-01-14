@@ -10,7 +10,7 @@ class Cf(object):
         self._session = boto3.session.Session(
             profile_name=profile_name, region_name=region
         )
-        self._cf_client = self._session.client('cloudformation')
+        self.cf_client = self._session.client('cloudformation')
         self._logger = logger if logger else madeira.get_logger()
         self._max_status_checks = 20
         self._status_check_interval = 20
@@ -26,7 +26,7 @@ class Cf(object):
             status_check += 1
 
             try:
-                stack = self._cf_client.describe_stacks(StackName=stack_name)['Stacks'][0]
+                stack = self.cf_client.describe_stacks(StackName=stack_name)['Stacks'][0]
             except botocore.exceptions.ClientError as e:
                 stack_missing_msg = 'Stack with id {} does not exist'.format(stack_name)
                 if stack_missing_msg in str(e) and desired_status == 'DELETE_COMPLETE':
@@ -57,7 +57,7 @@ class Cf(object):
     def create_stack(self, stack_name, template_body, params=None, tags=None, termination_protection=True,
                      max_status_checks=None, status_check_interval=None):
         try:
-            if self._cf_client.describe_stacks(StackName=stack_name).get('Stacks'):
+            if self.cf_client.describe_stacks(StackName=stack_name).get('Stacks'):
                 self._logger.warning('Stack with name: %s already exists - skipping', stack_name)
                 return False
 
@@ -76,7 +76,7 @@ class Cf(object):
             tags = []
 
         self._logger.info('Requesting creation of stack: %s', stack_name)
-        response = self._cf_client.create_stack(
+        response = self.cf_client.create_stack(
             StackName=stack_name,
             Capabilities=['CAPABILITY_NAMED_IAM'],
             Parameters=params,
@@ -97,7 +97,7 @@ class Cf(object):
                                max_status_checks=None, status_check_interval=None):
         try:
             # update the existing stack if it exists
-            if self._cf_client.describe_stacks(StackName=stack_name):
+            if self.cf_client.describe_stacks(StackName=stack_name):
                 return self.update_stack(stack_name, template_body, params=params, tags=tags,
                                          max_status_checks=max_status_checks,
                                          status_check_interval=status_check_interval)
@@ -194,17 +194,17 @@ class Cf(object):
 
         if disable_termination_protection:
             self._logger.info('Disabling termination protection for %s', stack_name)
-            self._cf_client.update_termination_protection(EnableTerminationProtection=False, StackName=stack_name)
+            self.cf_client.update_termination_protection(EnableTerminationProtection=False, StackName=stack_name)
 
         self._logger.info('Requesting deletion of stack: %s', stack_name)
-        self._cf_client.delete_stack(StackName=stack_name)
+        self.cf_client.delete_stack(StackName=stack_name)
 
         return self._wait_for_status(stack_name, 'DELETE_COMPLETE', max_status_checks=max_status_checks,
                                      status_check_interval=status_check_interval)
 
     def get_stack(self, stack_name):
         try:
-            return self._cf_client.describe_stacks(StackName=stack_name)['Stacks'][0]
+            return self.cf_client.describe_stacks(StackName=stack_name)['Stacks'][0]
         except botocore.exceptions.ClientError as e:
             if 'does not exist' in str(e):
                 return
@@ -216,12 +216,12 @@ class Cf(object):
         return {output['OutputKey']: output['OutputValue'] for output in stack['Outputs']}
 
     def get_stacks(self):
-        return self._cf_client.describe_stacks().get('Stacks')
+        return self.cf_client.describe_stacks().get('Stacks')
 
     def update_stack(self, stack_name, template_body, params=None, tags=None,
                      max_status_checks=None, status_check_interval=None):
         try:
-            existing_stack = self._cf_client.describe_stacks(StackName=stack_name).get('Stacks')[0]
+            existing_stack = self.cf_client.describe_stacks(StackName=stack_name).get('Stacks')[0]
             if (existing_stack['StackStatus'].startswith('DELETE') or
                     existing_stack['StackStatus'].startswith('ROLLBACK')):
                 self._logger.error('Stack: %s has status: %s which is impossible to update', stack_name,
@@ -242,7 +242,7 @@ class Cf(object):
         self._logger.info('Requesting update of stack: %s', stack_name)
 
         try:
-            self._cf_client.update_stack(
+            self.cf_client.update_stack(
                 StackName=stack_name,
                 Capabilities=['CAPABILITY_NAMED_IAM'],
                 Parameters=params,

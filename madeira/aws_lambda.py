@@ -16,7 +16,7 @@ from madeira import sts
 class AwsLambda:
 
     def __init__(self, logger=None):
-        self._lambda_client = boto3.client('lambda')
+        self.lambda_client = boto3.client('lambda')
         self._sts_wrapper = sts.Sts()
         self._logger = logger if logger else madeira.get_logger()
 
@@ -81,7 +81,7 @@ class AwsLambda:
     def _set_reserved_concurrency(self, name, reserved_concurrency):
         if reserved_concurrency:
             self._logger.info('setting reserved concurrency to %s on function %s', reserved_concurrency, name)
-            self._lambda_client.put_function_concurrency(
+            self.lambda_client.put_function_concurrency(
                 FunctionName=name,
                 ReservedConcurrentExecutions=reserved_concurrency
             )
@@ -96,7 +96,7 @@ class AwsLambda:
 
         while status_check < max_status_checks:
             status_check += 1
-            lambda_function = self._lambda_client.get_function(FunctionName=function_arn)
+            lambda_function = self.lambda_client.get_function(FunctionName=function_arn)
 
             if lambda_function['Configuration']['State'] == finished_status:
                 self._logger.debug(
@@ -122,7 +122,7 @@ class AwsLambda:
     def add_permission_for_s3_bucket(self, name, bucket):
         self.remove_permission_for_s3_bucket(name, bucket)
         self._logger.info('Allowing invocation of function: %s based on events from S3 bucket: %s', name, bucket)
-        self._lambda_client.add_permission(
+        self.lambda_client.add_permission(
             Action='lambda:InvokeFunction',
             FunctionName=name,
             Principal='s3.amazonaws.com',
@@ -138,7 +138,7 @@ class AwsLambda:
             layer_updates = []
 
         try:
-            lambda_function = self._lambda_client.get_function(FunctionName=name)
+            lambda_function = self.lambda_client.get_function(FunctionName=name)
             self._logger.info('Function: %s already exists - determining if update is required', name)
             function_arn = lambda_function['Configuration']['FunctionArn']
 
@@ -179,7 +179,7 @@ class AwsLambda:
                 memory_size=memory_size, timeout=timeout, reserved_concurrency=reserved_concurrency,
                 layer_arns=layer_arns, function_is_zip=function_is_zip)
 
-        except self._lambda_client.exceptions.ResourceNotFoundException:
+        except self.lambda_client.exceptions.ResourceNotFoundException:
             self._logger.info('Function: %s does not yet exist', name)
             function_arn = self.create_function(
                 name, role, function_file_path, description=description, vpc_config=vpc_config, memory_size=memory_size,
@@ -198,16 +198,16 @@ class AwsLambda:
             args['Qualifier'] = qualifier
 
         try:
-            self._lambda_client.delete_function(**args)
+            self.lambda_client.delete_function(**args)
             self._logger.info('Function: %s deleted', name)
-        except self._lambda_client.exceptions.ResourceNotFoundException:
+        except self.lambda_client.exceptions.ResourceNotFoundException:
             self._logger.warning('Function: %s does not exist', name)
 
     def delete_layer_version(self, name, version):
         try:
-            self._lambda_client.delete_layer_version(LayerName=name, VersionNumber=version)
+            self.lambda_client.delete_layer_version(LayerName=name, VersionNumber=version)
             self._logger.info('Layer: %s version: %s deleted', name, version)
-        except self._lambda_client.exceptions.ResourceNotFoundException:
+        except self.lambda_client.exceptions.ResourceNotFoundException:
             self._logger.warning('Layer: %s version: %s does not exist', name, version)
 
     # DEPRECATED
@@ -221,7 +221,7 @@ class AwsLambda:
 
         self._logger.info('Deploying function: %s from file: %s', name, function_file_path)
         try:
-            function_arn = self._lambda_client.create_function(
+            function_arn = self.lambda_client.create_function(
                 FunctionName=name,
                 Runtime='python3.7',
                 Role=role,
@@ -235,9 +235,9 @@ class AwsLambda:
                 VpcConfig=vpc_config,
             ).get('FunctionArn')
 
-        except self._lambda_client.exceptions.ResourceConflictException:
+        except self.lambda_client.exceptions.ResourceConflictException:
             self._logger.warning('Function: %s already exists', name)
-            function_arn = self._lambda_client.get_function(FunctionName=name).get('Configuration').get('FunctionArn')
+            function_arn = self.lambda_client.get_function(FunctionName=name).get('Configuration').get('FunctionArn')
 
         if reserved_concurrency:
             self._set_reserved_concurrency(name, reserved_concurrency)
@@ -262,7 +262,7 @@ class AwsLambda:
         file_sha256_string = base64.b64encode(file_sha256.digest()).decode()
 
         for lambda_layer_version in self.list_layer_versions(name):
-            layer_version_meta = self._lambda_client.get_layer_version_by_arn(
+            layer_version_meta = self.lambda_client.get_layer_version_by_arn(
                 Arn=lambda_layer_version['LayerVersionArn'])
             aws_sha256_string = layer_version_meta['Content']['CodeSha256']
             if aws_sha256_string == file_sha256_string:
@@ -274,7 +274,7 @@ class AwsLambda:
             self._logger.debug('Using default runtimes: %s', runtimes)
 
         self._logger.info('deploying layer: %s in path: %s', name, layer_path)
-        layer_arn = self._lambda_client.publish_layer_version(
+        layer_arn = self.lambda_client.publish_layer_version(
             LayerName=name,
             Description=description,
             # must be a 'bytes' object
@@ -284,24 +284,24 @@ class AwsLambda:
         return layer_arn, True
 
     def list_functions(self):
-        response = self._lambda_client.list_functions()
+        response = self.lambda_client.list_functions()
         functions = response.get('Functions')
 
         while response.get('NextMarker'):
-            response = self._lambda_client.list_functions(NextMarker=response.get('NextMarker'))
+            response = self.lambda_client.list_functions(NextMarker=response.get('NextMarker'))
             functions.extend(response.get('Functions'))
 
         return functions
 
     def list_layers(self):
-        return self._lambda_client.list_layers().get('Layers')
+        return self.lambda_client.list_layers().get('Layers')
 
     def list_layer_versions(self, name):
-        response = self._lambda_client.list_layer_versions(LayerName=name)
+        response = self.lambda_client.list_layer_versions(LayerName=name)
         layer_versions = response.get('LayerVersions')
 
         while response.get('NextMarker'):
-            response = self._lambda_client.list_layer_versions(LayerName=name, NextMarker=response.get('NextMarker'))
+            response = self.lambda_client.list_layer_versions(LayerName=name, NextMarker=response.get('NextMarker'))
             layer_versions.extend(response.get('LayerVersions'))
 
         return layer_versions
@@ -310,13 +310,13 @@ class AwsLambda:
         self._logger.info('Attempting to remove permission to invoke function: %s based on events from S3 bucket: %s '
                           'if any', name, bucket)
         try:
-            self._lambda_client.remove_permission(
+            self.lambda_client.remove_permission(
                 FunctionName=name,
                 StatementId='permission_for_{}'.format(bucket),
             )
         # NOTE: there's no clean way to first look up if a permission exists before removing it without re-arranging
         # this module, so for now we just catch the exception and move on.
-        except self._lambda_client.exceptions.ResourceNotFoundException:
+        except self.lambda_client.exceptions.ResourceNotFoundException:
             self._logger.warning('Permission does not yet exist to invoke function: %s based on events from '
                                  'S3 bucket: %s', name, bucket)
 
@@ -330,13 +330,13 @@ class AwsLambda:
             vpc_config = {}
 
         self._logger.info('Updating code')
-        self._lambda_client.update_function_code(
+        self.lambda_client.update_function_code(
             FunctionName=name,
             ZipFile=self._get_zip_content(function_file_path, function_is_zip),
             Publish=True
         )
         self._logger.info('Updating function configuration')
-        self._lambda_client.update_function_configuration(
+        self.lambda_client.update_function_configuration(
             FunctionName=name,
             Role=role,
             Description=description,

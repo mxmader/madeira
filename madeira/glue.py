@@ -6,16 +6,16 @@ import boto3
 class Glue(object):
 
     def __init__(self, logger=None, region=None):
-        self._glue_client = boto3.client('glue', region_name=region)
+        self.glue_client = boto3.client('glue', region_name=region)
         self._kms_wrapper = kms.Kms()
         self._logger = logger if logger else madeira.get_logger()
 
     def create_database(self, database):
         try:
             self._logger.info('Creating glue catalog database: %s', database)
-            return self._glue_client.create_database(DatabaseInput={'Name': database})
+            return self.glue_client.create_database(DatabaseInput={'Name': database})
 
-        except self._glue_client.exceptions.AlreadyExistsException:
+        except self.glue_client.exceptions.AlreadyExistsException:
             self._logger.warning('Database already exists: %s', database)
 
     def create_or_update_job(self, name, role_arn, s3_script_path, description='', glue_version='1.0',
@@ -73,42 +73,42 @@ class Glue(object):
             del(job_params['MaxCapacity'])
 
         try:
-            self._glue_client.get_job(JobName=name)
+            self.glue_client.get_job(JobName=name)
             self._logger.info('Glue Job: %s already exists; updating it', name)
             del(job_params['Name'])
-            self._glue_client.update_job(JobName=name, JobUpdate=job_params)
+            self.glue_client.update_job(JobName=name, JobUpdate=job_params)
 
-        except self._glue_client.exceptions.EntityNotFoundException:
+        except self.glue_client.exceptions.EntityNotFoundException:
             self._logger.info('Creating Glue Job: %s', name)
-            self._glue_client.create_job(**job_params)
+            self.glue_client.create_job(**job_params)
 
         return name
 
     def create_or_update_table(self, database, name, glue_table):
         try:
-            self._glue_client.get_table(DatabaseName=database, Name=name)
+            self.glue_client.get_table(DatabaseName=database, Name=name)
             self._logger.info('Updating table: %s', name)
-            self._glue_client.update_table(**glue_table)
-        except self._glue_client.exceptions.EntityNotFoundException:
+            self.glue_client.update_table(**glue_table)
+        except self.glue_client.exceptions.EntityNotFoundException:
             self._logger.info('Creating table: %s', name)
-            self._glue_client.create_table(**glue_table)
+            self.glue_client.create_table(**glue_table)
 
     def delete_database(self, database):
         try:
             self._logger.info('Deleting glue database: %s', database)
-            return self._glue_client.delete_database(Name=database)
-        except self._glue_client.exceptions.EntityNotFoundException:
+            return self.glue_client.delete_database(Name=database)
+        except self.glue_client.exceptions.EntityNotFoundException:
             self._logger.warning('Database does not exist: %s', database)
             return False
 
     def delete_job(self, job):
-        return self._glue_client.delete_job(JobName=job)
+        return self.glue_client.delete_job(JobName=job)
 
     def delete_table(self, database, table):
         try:
             self._logger.info('Deleting glue table: %s', table)
-            return self._glue_client.delete_table(DatabaseName=database, Name=table)
-        except self._glue_client.exceptions.EntityNotFoundException:
+            return self.glue_client.delete_table(DatabaseName=database, Name=table)
+        except self.glue_client.exceptions.EntityNotFoundException:
             self._logger.warning('Either database: %s or table: %s does not exist', database, table)
             return False
 
@@ -118,14 +118,14 @@ class Glue(object):
         glue_jobs = list()
 
         self._logger.debug('Reading first chunk of glue jobs')
-        glue_job_chunk = self._glue_client.list_jobs(
+        glue_job_chunk = self.glue_client.list_jobs(
             MaxResults=max_results
         )
         glue_jobs.extend(glue_job_chunk.get('JobNames'))
 
         while glue_job_chunk.get('NextToken'):
             self._logger.debug('Reading next chunk of glue jobs')
-            glue_job_chunk = self._glue_client.list_jobs(
+            glue_job_chunk = self.glue_client.list_jobs(
                 NextToken=glue_job_chunk.get('NextToken'),
                 MaxResults=max_results
             )
@@ -134,6 +134,6 @@ class Glue(object):
 
     def list_tables(self, database):
         try:
-            return self._glue_client.get_tables(DatabaseName=database, MaxResults=999).get('TableList')
-        except self._glue_client.exceptions.EntityNotFoundException:
+            return self.glue_client.get_tables(DatabaseName=database, MaxResults=999).get('TableList')
+        except self.glue_client.exceptions.EntityNotFoundException:
             return []

@@ -7,7 +7,7 @@ import time
 class Athena(object):
 
     def __init__(self, logger=None):
-        self._athena_client = boto3.client('athena')
+        self.athena_client = boto3.client('athena')
         self._kms_wrapper = kms.Kms()
         self._sts_wrapper = sts.Sts()
         self._session_wrapper = session.Session()
@@ -24,7 +24,7 @@ class Athena(object):
         if not output_location:
             output_location = self._get_default_output_location()
         self._logger.debug('Executing query: %s', sql)
-        execution_id = self._athena_client.start_query_execution(
+        execution_id = self.athena_client.start_query_execution(
             QueryString=sql,
             QueryExecutionContext={'Database': database},
             ResultConfiguration={'OutputLocation': output_location},
@@ -36,7 +36,7 @@ class Athena(object):
         # TODO: let waiting parameters be overriden the method level
         for i in range(0, self._max_query_checks):
 
-            execution_status = self._athena_client.get_query_execution(
+            execution_status = self.athena_client.get_query_execution(
                 QueryExecutionId=execution_id).get('QueryExecution').get('Status')
             execution_state = execution_status.get('State')
             execution_state_reason = execution_status.get('StateChangeReason')
@@ -66,7 +66,7 @@ class Athena(object):
             self._logger.info('Got ARN: %s', kms_key)
 
         self._logger.info('Updating Athena default Workgroup configuration')
-        return self._athena_client.update_work_group(
+        return self.athena_client.update_work_group(
             WorkGroup=workgroup,
             Description=description,
             ConfigurationUpdates={

@@ -10,14 +10,14 @@ class Sts(object):
         self._session = boto3.session.Session(
             profile_name=profile_name, region_name=region
         )
-        self._sts_client = self._session.client("sts")
+        self.sts_client = self._session.client("sts")
         self._logger = logger if logger else madeira.get_logger()
 
     def get_account_id(self):
-        return self._sts_client.get_caller_identity().get("Account")
+        return self.sts_client.get_caller_identity().get("Account")
 
     def get_access_keys(self, duration=3600):
-        token = self._sts_client.get_session_token(DurationSeconds=duration).get(
+        token = self.sts_client.get_session_token(DurationSeconds=duration).get(
             "Credentials"
         )
         return (
@@ -30,7 +30,7 @@ class Sts(object):
         self, aws_profile, role_arn, role_session_name=None, duration=None
     ):
         role_session_name = role_session_name if role_session_name else uuid.uuid4().hex
-        creds = self._sts_client.assume_role(
+        creds = self.sts_client.assume_role(
             RoleArn=role_arn,
             RoleSessionName=role_session_name,
             DurationSeconds=duration,

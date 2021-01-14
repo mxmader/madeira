@@ -3,7 +3,7 @@ import boto3
 
 class Redshift(object):
     def __init__(self):
-        self.client = boto3.client('redshift')
+        self.redshift_client = boto3.client('redshift')
 
     def get_clusters(self):
-        return self.client.describe_clusters()
+        return self.redshift_client.describe_clusters()

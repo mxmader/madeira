@@ -10,8 +10,8 @@ import hashlib
 
 class S3(object):
     def __init__(self, logger=None):
-        self._s3_client = boto3.client("s3")
-        self._s3_resource = boto3.resource("s3")
+        self.s3_client = boto3.client("s3")
+        self.s3_resource = boto3.resource("s3")
         self._sts_wrapper = sts.Sts()
         self._logger = logger if logger else madeira.get_logger()
 
@@ -51,18 +51,18 @@ class S3(object):
                     "Skipping folder object: %s since it already exists", key
                 )
                 del folder_objects[key]
-            except self._s3_client.exceptions.NoSuchKey:
+            except self.s3_client.exceptions.NoSuchKey:
                 continue
 
         self.create_objects(bucket_name, folder_objects)
 
     def create_objects(self, bucket_name, objects):
         for key, value in objects.items():
-            self._s3_resource.Object(bucket_name, key).put(Body=value)
+            self.s3_resource.Object(bucket_name, key).put(Body=value)
             self._logger.info("Created object %s in bucket: %s", key, bucket_name)
 
     def delete_object(self, bucket_name, object_key):
-        self._s3_client.delete_object(Bucket=bucket_name, Key=object_key)
+        self.s3_client.delete_object(Bucket=bucket_name, Key=object_key)
 
     def delete_objects(self, bucket_name, object_keys):
         chunk_size = 1000
@@ -72,7 +72,7 @@ class S3(object):
                 "Objects": [{"Key": object_key["Key"]} for object_key in chunk],
                 "Quiet": True,
             }
-            self._s3_client.delete_objects(Bucket=bucket_name, Delete=object_list)
+            self.s3_client.delete_objects(Bucket=bucket_name, Delete=object_list)
         return len(object_keys)
 
     def delete_object_versions(self, bucket_name, object_keys):
@@ -83,12 +83,12 @@ class S3(object):
                 "Objects": [{"Key": object_key["Key"], "VersionId": object_key["VersionId"]} for object_key in chunk],
                 "Quiet": True,
             }
-            self._s3_client.delete_objects(Bucket=bucket_name, Delete=object_list, BypassGovernanceRetention=True)
+            self.s3_client.delete_objects(Bucket=bucket_name, Delete=object_list, BypassGovernanceRetention=True)
         return len(object_keys)
 
     def does_bucket_exist(self, bucket_name):
         try:
-            self._s3_resource.meta.client.head_bucket(Bucket=bucket_name)
+            self.s3_resource.meta.client.head_bucket(Bucket=bucket_name)
             return True
         except botocore.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
@@ -102,7 +102,7 @@ class S3(object):
 
     def get_all_buckets(self):
         return [
-            bucket["Name"] for bucket in self._s3_client.list_buckets().get("Buckets")
+            bucket["Name"] for bucket in self.s3_client.list_buckets().get("Buckets")
         ]
 
     def get_all_object_keys(self, bucket, prefix=""):
@@ -110,13 +110,13 @@ class S3(object):
         Returns all s3 keys (objects) in the named bucket as a
         list of boto.s3.key.Key objects.
         """
-        paginator = self._s3_client.get_paginator("list_objects")
+        paginator = self.s3_client.get_paginator("list_objects")
         page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix)
         try:
             return [
                 key for page in page_iterator for key in page.get("Contents", [])
             ]
-        except self._s3_client.exceptions.NoSuchBucket:
+        except self.s3_client.exceptions.NoSuchBucket:
             self._logger.warning("Bucket: %s does not exist", bucket)
 
     def get_all_object_versions(self, bucket, prefix=""):
@@ -127,8 +127,8 @@ class S3(object):
         # seemingly, pagination wrappers don't work for "list_object_versions" even though they're supported
         object_list = []
         try:
-            response = self._s3_client.list_object_versions(Bucket=bucket, Prefix=prefix)
-        except self._s3_client.exceptions.NoSuchBucket:
+            response = self.s3_client.list_object_versions(Bucket=bucket, Prefix=prefix)
+        except self.s3_client.exceptions.NoSuchBucket:
             self._logger.warning("Bucket: %s does not exist", bucket)
             return object_list
 
@@ -137,7 +137,7 @@ class S3(object):
 
         # per https://docs.aws.amazon.com/AmazonS3/latest/dev/list-obj-version-enabled-bucket.html
         while response.get('KeyMarker') or response.get('VersionIdMarker'):
-            response = self._s3_client.list_object_versions(
+            response = self.s3_client.list_object_versions(
                 KeyMarker=response['KeyMarker'], VersionIdMarker=response['VersionIdMarker'])
             object_list.extend(response.get('Versions', []))
             object_list.extend(response.get('DeleteMarkers', []))
@@ -168,7 +168,7 @@ class S3(object):
         return folder_objects
 
     def get_object(self, bucket, object_key):
-        return self._s3_client.get_object(Bucket=bucket, Key=object_key)
+        return self.s3_client.get_object(Bucket=bucket, Key=object_key)
 
     def get_old_object_keys(self, bucket, max_age_hours=24, prefix=""):
         """
@@ -178,7 +178,7 @@ class S3(object):
         past_time_at_max_age = datetime.now() - timedelta(
             hours=max_age_hours
         )
-        paginator = self._s3_client.get_paginator("list_objects")
+        paginator = self.s3_client.get_paginator("list_objects")
         page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
         bucket_object_list = []
@@ -190,7 +190,7 @@ class S3(object):
         return bucket_object_list
 
     def get_object_md5_base64(self, bucket_name, object_key):
-        source_object = self._s3_client.get_object(Bucket=bucket_name, Key=object_key)
+        source_object = self.s3_client.get_object(Bucket=bucket_name, Key=object_key)
         source_object_stream = source_object.get("Body")
         return self._get_object_base64_md5_hash(source_object_stream)
 
@@ -200,16 +200,16 @@ class S3(object):
         )
         if md5:
             object_args["ContentMD5"] = md5
-        self._s3_client.put_object(**object_args)
+        self.s3_client.put_object(**object_args)
 
     def rename_object(self, bucket_name, source_key, dest_key):
         self._logger.debug(
             "Renaming %s to %s in bucket: %s", source_key, dest_key, bucket_name
         )
-        self._s3_resource.Object(bucket_name, dest_key).copy_from(
+        self.s3_resource.Object(bucket_name, dest_key).copy_from(
             CopySource="{}/{}".format(bucket_name, source_key)
         )
-        self._s3_resource.Object(bucket_name, source_key).delete()
+        self.s3_resource.Object(bucket_name, source_key).delete()
 
     def set_no_public_access_on_account(self):
         self._logger.info(
@@ -230,7 +230,7 @@ class S3(object):
         self._logger.info(
             "Placing retention-based lock on: %s", bucket_name, object_key
         )
-        return self._s3_client.put_object_retention(
+        return self.s3_client.put_object_retention(
             Bucket=bucket_name,
             Key=object_key,
             Retention={

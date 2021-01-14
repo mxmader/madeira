@@ -10,14 +10,14 @@ class Ecr(object):
         self._session = boto3.session.Session(
             profile_name=profile_name, region_name=region
         )
-        self._ecr_client = self._session.client("ecr")
+        self.ecr_client = self._session.client("ecr")
         self._account_id = (
             self._session.client("sts").get_caller_identity().get("Account")
         )
         self._logger = logger if logger else madeira.get_logger()
 
     def _get_registry_id_for_repo(self, repo_name):
-        for repo in self._ecr_client.describe_repositories().get("repositories"):
+        for repo in self.ecr_client.describe_repositories().get("repositories"):
             if repo["repositoryName"] == repo_name:
                 return repo["registryId"]
 
@@ -27,11 +27,11 @@ class Ecr(object):
         # it is possible that there is no existing policy
         try:
             policy = json.loads(
-                self._ecr_client.get_repository_policy(
+                self.ecr_client.get_repository_policy(
                     registryId=registry_id, repositoryName=repo_name
                 ).get('policyText'))
             self._logger.info("Got existing policy for repo: %s in registry: %s", repo_name, registry_id)
-        except self._ecr_client.exceptions.RepositoryPolicyNotFoundException:
+        except self.ecr_client.exceptions.RepositoryPolicyNotFoundException:
             self._logger.warning(
                 "There no existing policy for repo: %s in registry: %s",
                 repo_name,
@@ -65,7 +65,7 @@ class Ecr(object):
 
         self._logger.info("Setting updated repository policy to allow account: %s to access repo: %s in registry: %s",
                           secondary_account_id, repo_name, registry_id)
-        self._ecr_client.set_repository_policy(
+        self.ecr_client.set_repository_policy(
             registryId=registry_id,
             repositoryName=repo_name,
             policyText=json.dumps(policy),

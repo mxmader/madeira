@@ -9,7 +9,7 @@ class Acm(object):
         self._session = boto3.session.Session(
             profile_name=profile_name, region_name=region
         )
-        self._acm_client = self._session.client('acm')
+        self.acm_client = self._session.client('acm')
         self._logger = logger if logger else madeira.get_logger()
         self._max_status_checks = 20
         self._status_check_interval = 20
@@ -21,10 +21,10 @@ class Acm(object):
             return
 
         self._logger.info("Deleting certificate for domain: %s with ARN: %s", domain_name, certificate_arn)
-        return self._acm_client.delete_certificate(CertificateArn=certificate_arn)
+        return self.acm_client.delete_certificate(CertificateArn=certificate_arn)
 
     def get_cert_arn_by_domain(self, domain_name):
-        for cert in self._acm_client.list_certificates().get('CertificateSummaryList'):
+        for cert in self.acm_client.list_certificates().get('CertificateSummaryList'):
             if cert['DomainName'] == domain_name:
                 return cert['CertificateArn']
 
@@ -35,13 +35,13 @@ class Acm(object):
             self._logger.info('Certificate with domain: %s has already been requested', domain_name)
         else:
             self._logger.info('Requesting ACM cert with domain name: %s', domain_name)
-            certificate_arn = self._acm_client.request_certificate(
+            certificate_arn = self.acm_client.request_certificate(
                 DomainName=domain_name,
                 ValidationMethod='DNS').get('CertificateArn')
 
         self._logger.debug('Got certificate ARN: %s', certificate_arn)
         time.sleep(10)
-        return certificate_arn, self._acm_client.describe_certificate(
+        return certificate_arn, self.acm_client.describe_certificate(
             CertificateArn=certificate_arn).get('Certificate').get(
                 'DomainValidationOptions')[0].get('ResourceRecord')
 
@@ -57,7 +57,7 @@ class Acm(object):
             status_check += 1
 
             # look for our cert to be in the ISSUED state.
-            for cert in self._acm_client.list_certificates(
+            for cert in self.acm_client.list_certificates(
                     CertificateStatuses=['ISSUED']).get('CertificateSummaryList'):
                 if cert['CertificateArn'] == certificate_arn:
                     self._logger.info('Certificate: %s is now issued', certificate_arn)
