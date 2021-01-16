@@ -55,7 +55,7 @@ class AwsLambda:
 
             # add each file in the layer to the in-memory zip
             for file in files:
-                file_path = '{}/{}'.format(root, file)
+                file_path = f'{root}/{file}'
                 with open(file_path, 'r') as f:
                     file_content = f.read()
                 zip_info = zipfile.ZipInfo(file_path)
@@ -82,9 +82,7 @@ class AwsLambda:
         if reserved_concurrency:
             self._logger.info('setting reserved concurrency to %s on function %s', reserved_concurrency, name)
             self.lambda_client.put_function_concurrency(
-                FunctionName=name,
-                ReservedConcurrentExecutions=reserved_concurrency
-            )
+                FunctionName=name, ReservedConcurrentExecutions=reserved_concurrency)
 
     def _wait_for_availability(self, function_arn):
         max_status_checks = 10
@@ -108,14 +106,12 @@ class AwsLambda:
                 "Lambda function: %s status is: %s - waiting for status: %s",
                 lambda_function["Configuration"]["FunctionName"],
                 lambda_function['Configuration']['State'],
-                finished_status,
-            )
+                finished_status)
 
             if status_check >= max_status_checks:
                 raise RuntimeError(
                     "Timed out waiting for lambda function: %s to be available",
-                    lambda_function["Configuration"]["FunctionName"],
-                )
+                    lambda_function["Configuration"]["FunctionName"])
 
             time.sleep(status_check_interval)
 
@@ -127,8 +123,8 @@ class AwsLambda:
             FunctionName=name,
             Principal='s3.amazonaws.com',
             SourceAccount=self._sts_wrapper.get_account_id(),
-            SourceArn='arn:aws:s3:::{}'.format(bucket),
-            StatementId='permission_for_{}'.format(bucket),
+            SourceArn=f'arn:aws:s3:::{bucket}',
+            StatementId=f'permission_for_{bucket}'
         )
 
     def create_or_update_function(self, name, role, function_file_path, description='', vpc_config=None,
@@ -232,8 +228,7 @@ class AwsLambda:
                 Layers=layer_arns,
                 MemorySize=memory_size,
                 Publish=True,
-                VpcConfig=vpc_config,
-            ).get('FunctionArn')
+                VpcConfig=vpc_config).get('FunctionArn')
 
         except self.lambda_client.exceptions.ResourceConflictException:
             self._logger.warning('Function: %s already exists', name)
@@ -255,7 +250,7 @@ class AwsLambda:
             with open(layer_path, 'rb') as f:
                 zip_file_bytes = f.read()
         else:
-            raise RuntimeError('Unsupported deployment format: {}'.format(format))
+            raise RuntimeError(f'Unsupported deployment format: {format}')
 
         file_sha256 = hashlib.sha256()
         file_sha256.update(zip_file_bytes)
@@ -310,10 +305,7 @@ class AwsLambda:
         self._logger.info('Attempting to remove permission to invoke function: %s based on events from S3 bucket: %s '
                           'if any', name, bucket)
         try:
-            self.lambda_client.remove_permission(
-                FunctionName=name,
-                StatementId='permission_for_{}'.format(bucket),
-            )
+            self.lambda_client.remove_permission(FunctionName=name, StatementId=f'permission_for_{bucket}')
         # NOTE: there's no clean way to first look up if a permission exists before removing it without re-arranging
         # this module, so for now we just catch the exception and move on.
         except self.lambda_client.exceptions.ResourceNotFoundException:

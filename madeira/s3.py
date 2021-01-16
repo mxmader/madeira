@@ -6,6 +6,7 @@ import base64
 import botocore.exceptions
 import boto3
 import hashlib
+import json
 
 
 class S3(object):
@@ -170,14 +171,18 @@ class S3(object):
     def get_object(self, bucket, object_key):
         return self.s3_client.get_object(Bucket=bucket, Key=object_key)
 
+    def get_object_contents(self, bucket, object_key, is_json=False):
+        if is_json:
+            return json.loads(self.get_object(bucket, object_key).get('Body').read().decode('utf-8'))
+
+        return self.get_object(bucket, object_key).get('Body').read().decode('utf-8')
+
     def get_old_object_keys(self, bucket, max_age_hours=24, prefix=""):
         """
         Returns all s3 keys (objects) older than max-age hours in the named bucket as a
         list of boto.s3.key.Key objects.
         """
-        past_time_at_max_age = datetime.now() - timedelta(
-            hours=max_age_hours
-        )
+        past_time_at_max_age = datetime.now() - timedelta(hours=max_age_hours)
         paginator = self.s3_client.get_paginator("list_objects")
         page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
@@ -194,21 +199,17 @@ class S3(object):
         source_object_stream = source_object.get("Body")
         return self._get_object_base64_md5_hash(source_object_stream)
 
-    def put_object(self, bucket_name, object_key, body, encoding="utf-8", md5=None):
-        object_args = dict(
-            Bucket=bucket_name, Key=object_key, Body=body, ContentEncoding=encoding
-        )
+    def put_object(self, bucket_name, object_key, body, encoding="utf-8", md5=None, is_json=False):
+        if is_json:
+            body = json.dumps(body)
+        object_args = dict(Bucket=bucket_name, Key=object_key, Body=body, ContentEncoding=encoding)
         if md5:
             object_args["ContentMD5"] = md5
         self.s3_client.put_object(**object_args)
 
     def rename_object(self, bucket_name, source_key, dest_key):
-        self._logger.debug(
-            "Renaming %s to %s in bucket: %s", source_key, dest_key, bucket_name
-        )
-        self.s3_resource.Object(bucket_name, dest_key).copy_from(
-            CopySource="{}/{}".format(bucket_name, source_key)
-        )
+        self._logger.debug("Renaming %s to %s in bucket: %s", source_key, dest_key, bucket_name)
+        self.s3_resource.Object(bucket_name, dest_key).copy_from(CopySource=f"{bucket_name}/{source_key}")
         self.s3_resource.Object(bucket_name, source_key).delete()
 
     def set_no_public_access_on_account(self):
@@ -227,9 +228,7 @@ class S3(object):
         )
 
     def set_object_lock(self, bucket_name, object_key, retention_mode, retention_years):
-        self._logger.info(
-            "Placing retention-based lock on: %s", bucket_name, object_key
-        )
+        self._logger.info("Placing retention-based lock on: %s", bucket_name, object_key)
         return self.s3_client.put_object_retention(
             Bucket=bucket_name,
             Key=object_key,

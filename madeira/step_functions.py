@@ -19,11 +19,7 @@ class StepFunctions:
 
         self._logger.debug('Attempt: %s to deploy state machine: %s', attempt, name)
         try:
-            result = self.step_functions_client.create_state_machine(
-                name=name,
-                definition=definition,
-                roleArn=role_arn
-            )
+            result = self.step_functions_client.create_state_machine(name=name, definition=definition, roleArn=role_arn)
             self._logger.info('Created state machine: %s', name)
             return result
         except self.step_functions_client.exceptions.StateMachineDeleting:
@@ -35,9 +31,8 @@ class StepFunctions:
 
     def create_or_update_state_machine(self, name, definition, role_arn):
         try:
-            state_machine_arn = 'arn:aws:states:{region}:{account_id}:stateMachine:{name}'.format(
-                name=name, region=self._session_wrapper.get_region_name(),
-                account_id=self._sts_wrapper.get_account_id())
+            state_machine_arn = (f'arn:aws:states:{self._session_wrapper.get_region_name()}:'
+                                 f'{self._sts_wrapper.get_account_id()}:stateMachine:{name}')
             state_machine = self.step_functions_client.describe_state_machine(stateMachineArn=state_machine_arn)
             if state_machine['status'] == 'DELETING':
                 return self.create_state_machine(name, definition, role_arn)

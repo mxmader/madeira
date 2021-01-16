@@ -28,7 +28,7 @@ class Cf(object):
             try:
                 stack = self.cf_client.describe_stacks(StackName=stack_name)['Stacks'][0]
             except botocore.exceptions.ClientError as e:
-                stack_missing_msg = 'Stack with id {} does not exist'.format(stack_name)
+                stack_missing_msg = f'Stack with id {stack_name} does not exist'
                 if stack_missing_msg in str(e) and desired_status == 'DELETE_COMPLETE':
                     return True
                 else:
@@ -64,7 +64,7 @@ class Cf(object):
         # TODO: clean this up once the CF client object's "exceptions" property has a clean
         # exception to process consistent with other AWS service-specific exceptions
         except botocore.exceptions.ClientError as e:
-            if 'Stack with id {} does not exist'.format(stack_name) in str(e):
+            if f'Stack with id {stack_name} does not exist' in str(e):
                 self._logger.debug('Stack %s does not exist', stack_name)
             else:
                 raise
@@ -107,7 +107,7 @@ class Cf(object):
         except botocore.exceptions.ClientError as e:
 
             # create the stack that does not exist
-            if 'Stack with id {} does not exist'.format(stack_name) in str(e):
+            if f'Stack with id {stack_name} does not exist' in str(e):
                 return self.create_stack(stack_name, template_body, params=params, tags=tags,
                                          termination_protection=termination_protection,
                                          max_status_checks=max_status_checks,

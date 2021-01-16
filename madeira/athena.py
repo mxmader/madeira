@@ -16,9 +16,8 @@ class Athena(object):
         self._interval = 3
 
     def _get_default_output_location(self):
-        return 'aws-athena-query-results-{account_id}-{region}'.format(
-            account_id=self._sts_wrapper.get_account_id(),
-            region=self._session_wrapper.get_region_name())
+        return (f'aws-athena-query-results-{self._sts_wrapper.get_account_id()}-'
+                f'{self._session_wrapper.get_region_name()}')
 
     def execute_query(self, database, sql, output_location=None, workgroup='primary'):
         if not output_location:
@@ -72,7 +71,7 @@ class Athena(object):
             ConfigurationUpdates={
                 'EnforceWorkGroupConfiguration': True,
                 'ResultConfigurationUpdates': {
-                    'OutputLocation': 's3://{}/'.format(results_bucket),
+                    'OutputLocation': f's3://{results_bucket}/',
                     'EncryptionConfiguration': {
                         'EncryptionOption': 'SSE_KMS',
                         'KmsKey': kms_key
