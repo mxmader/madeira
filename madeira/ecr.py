@@ -1,19 +1,13 @@
-import json
-
 import boto3
-
+import json
 import madeira
 
 
 class Ecr(object):
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._session = boto3.session.Session(
-            profile_name=profile_name, region_name=region
-        )
+        self._session = boto3.session.Session(profile_name=profile_name, region_name=region)
         self.ecr_client = self._session.client("ecr")
-        self._account_id = (
-            self._session.client("sts").get_caller_identity().get("Account")
-        )
+        self._account_id = (self._session.client("sts").get_caller_identity().get("Account"))
         self._logger = logger if logger else madeira.get_logger()
 
     def _get_registry_id_for_repo(self, repo_name):
@@ -70,3 +64,10 @@ class Ecr(object):
             repositoryName=repo_name,
             policyText=json.dumps(policy),
         )
+
+    def delete_images(self, repo, image_ids):
+        return self.ecr_client.batch_delete_image(repositoryName=repo, imageIds=image_ids)
+
+    def get_image_list(self, repo):
+        # TODO: implement "NextToken" processing
+        return self.ecr_client.list_images(repositoryName=repo, maxResults=1000).get('imageIds')
