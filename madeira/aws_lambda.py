@@ -50,7 +50,7 @@ class AwsLambda:
         cwd = os.getcwd()
         os.chdir(layer_path)
         for root, dirs, files in os.walk('.'):
-            if not files:
+            if '__pycache__' in root or not files:
                 continue
 
             # add each file in the layer to the in-memory zip
