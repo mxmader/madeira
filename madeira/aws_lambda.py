@@ -202,6 +202,7 @@ class AwsLambda:
             lambda_function = self.lambda_client.get_function(FunctionName=name)
             self._logger.info('Function: %s already exists - determining if update is required', name)
             function_arn = lambda_function['Configuration']['FunctionArn']
+            layer_count = len(lambda_function['Configuration']['Layers'])
 
             # Calculate the SHA256 checksum of the file (whether a zip file or not)
             file_sha256 = hashlib.sha256()
@@ -230,6 +231,8 @@ class AwsLambda:
                 self._logger.info('Updating lambda for code change')
             elif any(layer_updates):
                 self._logger.info('Updating lambda for related layer change')
+            elif layer_count != len(layer_arns):
+                self._logger.info('Updating lambda for added or removed layers')
             else:
                 self._logger.info('No lambda function code change and no layer related layer changes; '
                                   'no lambda function update required')
