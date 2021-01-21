@@ -58,11 +58,12 @@ class S3(object):
         self.create_objects(bucket_name, folder_objects)
 
     def create_objects(self, bucket_name, objects):
-        for key, value in objects.items():
-            self.s3_resource.Object(bucket_name, key).put(Body=value)
-            self._logger.info("Created object %s in bucket: %s", key, bucket_name)
+        for object_key, value in objects.items():
+            self._logger.info("Creating s3://%s/%s", bucket_name, object_key)
+            self.s3_resource.Object(bucket_name, object_key).put(Body=value)
 
     def delete_object(self, bucket_name, object_key):
+        self._logger.debug("Deleting s3://%s/%s", bucket_name, object_key)
         self.s3_client.delete_object(Bucket=bucket_name, Key=object_key)
 
     def delete_objects(self, bucket_name, object_keys):
@@ -205,6 +206,7 @@ class S3(object):
         object_args = dict(Bucket=bucket_name, Key=object_key, Body=body, ContentEncoding=encoding)
         if md5:
             object_args["ContentMD5"] = md5
+        self._logger.info("Uploading s3://%s/%s", bucket_name, object_key)
         self.s3_client.put_object(**object_args)
 
     def rename_object(self, bucket_name, source_key, dest_key):

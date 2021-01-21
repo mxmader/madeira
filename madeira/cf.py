@@ -187,8 +187,7 @@ class Cf(object):
             self._logger.info('Stack: %s does not exist', stack_name)
             return
 
-        if stack['StackStatus'] not in ['CREATE_COMPLETE', 'UPDATE_COMPLETE', 'DELETE_FAILED', 'ROLLBACK_COMPLETE',
-                                        'CREATE_IN_PROGRESS', 'UPDATE_IN_PROGRESS']:
+        if stack['StackStatus'] in ['DELETE_COMPLETE', 'DELETE_IN_PROGRESS']:
             self._logger.warning('Skipping stack: %s due to status: %s', stack['StackName'], stack['StackStatus'])
             return
 

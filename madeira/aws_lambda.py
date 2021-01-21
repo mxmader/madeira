@@ -20,6 +20,39 @@ class AwsLambda:
         self._sts_wrapper = sts.Sts()
         self._logger = logger if logger else madeira.get_logger()
 
+    def _create_function(self, name, role, function_file_path, description='', vpc_config=None, memory_size=128,
+                         timeout=30, reserved_concurrency=None, layer_arns=None, function_is_zip=False,
+                         runtime='python3.8', handler='handler.handler'):
+        if not layer_arns:
+            layer_arns = []
+
+        if not vpc_config:
+            vpc_config = {}
+
+        self._logger.info('Deploying function: %s from file: %s', name, function_file_path)
+        try:
+            function_arn = self.lambda_client.create_function(
+                FunctionName=name,
+                Runtime=runtime,
+                Role=role,
+                Handler=handler,
+                Code={'ZipFile': self._get_zip_content(function_file_path, function_is_zip)},
+                Description=description,
+                Timeout=timeout,
+                Layers=layer_arns,
+                MemorySize=memory_size,
+                Publish=True,
+                VpcConfig=vpc_config).get('FunctionArn')
+
+        except self.lambda_client.exceptions.ResourceConflictException:
+            self._logger.warning('Function: %s already exists', name)
+            function_arn = self.lambda_client.get_function(FunctionName=name).get('Configuration').get('FunctionArn')
+
+        if reserved_concurrency:
+            self._set_reserved_concurrency(name, reserved_concurrency)
+
+        return function_arn
+
     @staticmethod
     def _get_zip_object():
         in_memory_zip = BytesIO()
@@ -84,6 +117,37 @@ class AwsLambda:
             self.lambda_client.put_function_concurrency(
                 FunctionName=name, ReservedConcurrentExecutions=reserved_concurrency)
 
+    def _update_function(self, name, role, function_file_path, description='', vpc_config=None, memory_size=128,
+                         timeout=30, reserved_concurrency=None, layer_arns=None, function_is_zip=False,
+                         runtime='python-3.8', handler='handler.handler'):
+        if not layer_arns:
+            layer_arns = []
+
+        if not vpc_config:
+            vpc_config = {}
+
+        self._logger.info('Updating code')
+        self.lambda_client.update_function_code(
+            FunctionName=name,
+            ZipFile=self._get_zip_content(function_file_path, function_is_zip),
+            Publish=True
+        )
+        self._logger.info('Updating function configuration')
+        self.lambda_client.update_function_configuration(
+            FunctionName=name,
+            Runtime=runtime,
+            Role=role,
+            Handler=handler,
+            Description=description,
+            VpcConfig=vpc_config,
+            Timeout=timeout,
+            MemorySize=memory_size,
+            Layers=layer_arns
+        )
+
+        if reserved_concurrency:
+            self._set_reserved_concurrency(name, reserved_concurrency)
+
     def _wait_for_availability(self, function_arn):
         max_status_checks = 10
         status_check_interval = 20
@@ -129,7 +193,8 @@ class AwsLambda:
 
     def create_or_update_function(self, name, role, function_file_path, description='', vpc_config=None,
                                   memory_size=128, timeout=30, reserved_concurrency=None, layer_arns=None,
-                                  function_is_zip=False, layer_updates=None):
+                                  function_is_zip=False, layer_updates=None, runtime='python3.8',
+                                  handler='handler.handler'):
         if not layer_updates:
             layer_updates = []
 
@@ -170,17 +235,17 @@ class AwsLambda:
                                   'no lambda function update required')
                 return function_arn
 
-            self.update_function(
+            self._update_function(
                 name, role, function_file_path, description=description, vpc_config=vpc_config,
                 memory_size=memory_size, timeout=timeout, reserved_concurrency=reserved_concurrency,
-                layer_arns=layer_arns, function_is_zip=function_is_zip)
+                layer_arns=layer_arns, function_is_zip=function_is_zip, runtime=runtime, handler=handler)
 
         except self.lambda_client.exceptions.ResourceNotFoundException:
             self._logger.info('Function: %s does not yet exist', name)
-            function_arn = self.create_function(
+            function_arn = self._create_function(
                 name, role, function_file_path, description=description, vpc_config=vpc_config, memory_size=memory_size,
                 timeout=timeout, reserved_concurrency=reserved_concurrency, layer_arns=layer_arns,
-                function_is_zip=function_is_zip)
+                function_is_zip=function_is_zip, runtime=runtime, handler=handler)
 
         # VPC-scoped lambdas sometimes take more time to spin up, so we wait for their final state
         if vpc_config:
@@ -206,51 +271,18 @@ class AwsLambda:
         except self.lambda_client.exceptions.ResourceNotFoundException:
             self._logger.warning('Layer: %s version: %s does not exist', name, version)
 
-    # DEPRECATED
-    def create_function(self, name, role, function_file_path, description='', vpc_config=None, memory_size=128,
-                        timeout=30, reserved_concurrency=None, layer_arns=None, function_is_zip=False):
-        if not layer_arns:
-            layer_arns = []
-
-        if not vpc_config:
-            vpc_config = {}
-
-        self._logger.info('Deploying function: %s from file: %s', name, function_file_path)
-        try:
-            function_arn = self.lambda_client.create_function(
-                FunctionName=name,
-                Runtime='python3.7',
-                Role=role,
-                Handler='handler.handler',
-                Code={'ZipFile': self._get_zip_content(function_file_path, function_is_zip)},
-                Description=description,
-                Timeout=timeout,
-                Layers=layer_arns,
-                MemorySize=memory_size,
-                Publish=True,
-                VpcConfig=vpc_config).get('FunctionArn')
-
-        except self.lambda_client.exceptions.ResourceConflictException:
-            self._logger.warning('Function: %s already exists', name)
-            function_arn = self.lambda_client.get_function(FunctionName=name).get('Configuration').get('FunctionArn')
-
-        if reserved_concurrency:
-            self._set_reserved_concurrency(name, reserved_concurrency)
-
-        return function_arn
-
-    def deploy_layer(self, name, layer_path, description='', runtimes=None, format='directory'):
+    def deploy_layer(self, name, layer_path, description='', runtimes=None, layer_format='directory'):
         # for layers that consist simply of a flat directory (no subdirs) with code (text) files.
-        if format == 'directory':
+        if layer_format == 'directory':
             in_memory_zip = self._get_layer_zip(layer_path)
             zip_file_bytes = in_memory_zip.getvalue()
 
         # for layers with more complexity that are better off "just zipped"
-        elif format == 'zipfile':
+        elif layer_format == 'zipfile':
             with open(layer_path, 'rb') as f:
                 zip_file_bytes = f.read()
         else:
-            raise RuntimeError(f'Unsupported deployment format: {format}')
+            raise RuntimeError(f'Unsupported deployment format: {layer_format}')
 
         file_sha256 = hashlib.sha256()
         file_sha256.update(zip_file_bytes)
@@ -265,17 +297,16 @@ class AwsLambda:
                 return lambda_layer_version['LayerVersionArn'], False
 
         if not runtimes:
-            runtimes = ['python3.7']
-            self._logger.debug('Using default runtimes: %s', runtimes)
+            runtimes = ['python3.8']
 
-        self._logger.info('deploying layer: %s in path: %s', name, layer_path)
+        self._logger.info('Deploying layer: %s in path: %s for runtimes: %s', name, layer_path, runtimes)
         layer_arn = self.lambda_client.publish_layer_version(
             LayerName=name,
             Description=description,
             # must be a 'bytes' object
             Content={'ZipFile': zip_file_bytes},
             CompatibleRuntimes=runtimes).get('LayerVersionArn')
-        self._logger.debug('layer ARN: %s', layer_arn)
+        self._logger.debug('Layer ARN: %s', layer_arn)
         return layer_arn, True
 
     def list_functions(self):
@@ -311,32 +342,3 @@ class AwsLambda:
         except self.lambda_client.exceptions.ResourceNotFoundException:
             self._logger.warning('Permission does not yet exist to invoke function: %s based on events from '
                                  'S3 bucket: %s', name, bucket)
-
-    # DEPRECATED
-    def update_function(self, name, role, function_file_path, description='', vpc_config=None, memory_size=128,
-                        timeout=30, reserved_concurrency=None, layer_arns=None, function_is_zip=False):
-        if not layer_arns:
-            layer_arns = []
-
-        if not vpc_config:
-            vpc_config = {}
-
-        self._logger.info('Updating code')
-        self.lambda_client.update_function_code(
-            FunctionName=name,
-            ZipFile=self._get_zip_content(function_file_path, function_is_zip),
-            Publish=True
-        )
-        self._logger.info('Updating function configuration')
-        self.lambda_client.update_function_configuration(
-            FunctionName=name,
-            Role=role,
-            Description=description,
-            VpcConfig=vpc_config,
-            Timeout=timeout,
-            MemorySize=memory_size,
-            Layers=layer_arns
-        )
-
-        if reserved_concurrency:
-            self._set_reserved_concurrency(name, reserved_concurrency)
