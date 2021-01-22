@@ -2,7 +2,7 @@ import madeira
 import boto3
 
 
-class Cf(object):
+class CloudFront(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
         self._session = boto3.session.Session(profile_name=profile_name, region_name=region)

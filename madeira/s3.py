@@ -200,12 +200,15 @@ class S3(object):
         source_object_stream = source_object.get("Body")
         return self._get_object_base64_md5_hash(source_object_stream)
 
-    def put_object(self, bucket_name, object_key, body, encoding="utf-8", md5=None, as_json=False):
+    def put_object(self, bucket_name, object_key, body, encoding="utf-8", md5=None, as_json=False,
+                   content_type=None):
         if as_json:
             body = json.dumps(body)
         object_args = dict(Bucket=bucket_name, Key=object_key, Body=body, ContentEncoding=encoding)
         if md5:
             object_args["ContentMD5"] = md5
+        if content_type:
+            object_args["ContentType"] = content_type
         self._logger.info("Uploading s3://%s/%s", bucket_name, object_key)
         self.s3_client.put_object(**object_args)
 
