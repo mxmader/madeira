@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-__version__ = '1.0.8'
+__version__ = '1.0.9'
 
 aws_profile = None
 region_name = None
@@ -37,5 +37,6 @@ def get_logger(level=logging.INFO, use_stdout=True, logger_name='app_logger'):
     return logger
 
 
+# TODO: move to an IAM class
 def get_account_arn(account_id):
     return f'arn:aws:iam::{account_id}:root'

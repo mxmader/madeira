@@ -7,9 +7,7 @@ import time
 class Cf(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._session = boto3.session.Session(
-            profile_name=profile_name, region_name=region
-        )
+        self._session = boto3.session.Session(profile_name=profile_name, region_name=region)
         self.cf_client = self._session.client('cloudformation')
         self._logger = logger if logger else madeira.get_logger()
         self._max_status_checks = 20
