@@ -2,10 +2,8 @@ from madeira import sts
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
 import madeira
-import base64
 import botocore.exceptions
 import boto3
-import hashlib
 import json
 
 
@@ -25,19 +23,6 @@ class S3(object):
             return date_today + (
                 date(date_today.year + retain_years, 1, 1) - date(date_today.year, 1, 1)
             )
-
-    @staticmethod
-    def _get_object_base64_md5_hash(body, blocksize=1048576):
-        md5_hash = hashlib.md5()
-        while True:
-            buffer = body.read(blocksize)
-            if not buffer:
-                break
-            md5_hash.update(buffer)
-        digest = md5_hash.digest()
-        # object checksum must be base64-encoded. See also:
-        # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.put_object
-        return base64.b64encode(digest).decode("utf-8")
 
     def create_folders(self, bucket_name, folders):
         # create a set of "folders" (really, a pre-provisioned set of empty objects which represent S3 object
@@ -197,32 +182,38 @@ class S3(object):
 
     def get_object_md5_base64(self, bucket_name, object_key):
         source_object = self.s3_client.get_object(Bucket=bucket_name, Key=object_key)
-        source_object_stream = source_object.get("Body")
-        return self._get_object_base64_md5_hash(source_object_stream)
+        return madeira.get_base64_sum_of_stream(source_object.get("Body"), hash_type='md5')
 
     def put_object(self, bucket_name, object_key, body, encoding="utf-8", md5=None, as_json=False,
                    content_type=None):
         if as_json:
             body = json.dumps(body)
+
         object_args = dict(Bucket=bucket_name, Key=object_key, Body=body, ContentEncoding=encoding)
+
+        # user-attested object checksums must be base64-encoded for submission to S3. See also:
+        # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.put_object
         if md5:
             object_args["ContentMD5"] = md5
+
         if content_type:
             object_args["ContentType"] = content_type
+
         self._logger.info("Uploading s3://%s/%s", bucket_name, object_key)
-        self.s3_client.put_object(**object_args)
+        return self.s3_client.put_object(**object_args)
 
     def rename_object(self, bucket_name, source_key, dest_key):
         self._logger.debug("Renaming %s to %s in bucket: %s", source_key, dest_key, bucket_name)
         self.s3_resource.Object(bucket_name, dest_key).copy_from(CopySource=f"{bucket_name}/{source_key}")
         self.s3_resource.Object(bucket_name, source_key).delete()
+        return True
 
     def set_no_public_access_on_account(self):
         self._logger.info(
             "Blocking all public access attributes for all future bucket creation"
         )
         s3_control = boto3.client("s3control")
-        s3_control.put_public_access_block(
+        return s3_control.put_public_access_block(
             PublicAccessBlockConfiguration={
                 "BlockPublicAcls": True,
                 "IgnorePublicAcls": True,

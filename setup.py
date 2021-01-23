@@ -27,6 +27,7 @@ setup(
     ],
     packages=find_packages(exclude=['*.tests', '*.tests.*']),
     install_requires=[
-        'boto3'
+        'boto3',
+        'requests'
     ]
 )

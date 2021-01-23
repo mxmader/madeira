@@ -1,13 +1,9 @@
-import base64
-import hashlib
-import io
 import os
 import time
 import zipfile
 from io import BytesIO
 
 import boto3
-import requests
 
 import madeira
 from madeira import sts
@@ -77,6 +73,7 @@ class AwsLambda:
         in_memory_zip.seek(0)
         return in_memory_zip
 
+    # TODO: to general purpose module
     def _get_layer_zip(self, layer_path):
         in_memory_zip, zip_file = self._get_zip_object()
 
@@ -96,11 +93,13 @@ class AwsLambda:
                 zip_info.create_system = 3  # Specifies Unix
                 zip_info.external_attr = 0o0777 << 16  # adjusted for python 3
                 zip_file.writestr(zip_info, file_content)
+
         os.chdir(cwd)
         zip_file.close()
         in_memory_zip.seek(0)
         return in_memory_zip
 
+    # TODO: to general purpose module
     def _get_zip_content(self, function_file_path, function_is_zip):
         if function_is_zip:
             with open(function_file_path, 'rb') as f:
@@ -200,42 +199,30 @@ class AwsLambda:
 
         try:
             lambda_function = self.lambda_client.get_function(FunctionName=name)
-            self._logger.info('Function: %s already exists - determining if update is required', name)
+            self._logger.debug('%s: lambda function: already exists; checking on updates', name)
             function_arn = lambda_function['Configuration']['FunctionArn']
             layer_count = len(lambda_function['Configuration']['Layers'])
 
             # Calculate the SHA256 checksum of the file (whether a zip file or not)
-            file_sha256 = hashlib.sha256()
-            with open(function_file_path, 'rb') as f:
-                while True:
-                    data = f.read(65536)
-                    if not data:
-                        break
-                    file_sha256.update(data)
-            file_sha256_string = base64.b64encode(file_sha256.digest()).decode()
+            file_sha256_string = madeira.get_base64_sum_of_file(function_file_path)
 
-            # for "pure python file" lambdas, we need to download the AWS encapsulation of the file (their zipped copy)
-            # extract it, and compare the hash of _that_ file to the hash of the python file.
-            if not function_is_zip:
-                # NOTE: reads the whole zip in memory - we're assuming all lambdas stay relatively small
-                r = requests.get(lambda_function.get('Code').get('Location'))
-                z = zipfile.ZipFile(io.BytesIO(r.content))
-                handler_content = z.read('handler.py')
-                aws_file_sha256 = hashlib.sha256()
-                aws_file_sha256.update(handler_content)
-                aws_file_sha256_string = base64.b64encode(aws_file_sha256.digest()).decode()
-            else:
+            if function_is_zip:
                 aws_file_sha256_string = lambda_function.get('Configuration').get('CodeSha256')
+            else:
+                # AWS stores lambdas in zip files in a "hidden" S3 bucket - we need to extract the handler as-stored
+                # in S3 in order to compare it to our local file. This reads the whole encapsulating zip in memory;
+                # we're assuming all lambdas stay relatively small
+                aws_file_sha256_string = madeira.get_base64_sum_of_file_in_zip_from_url(
+                    lambda_function.get('Code').get('Location'), 'handler.py')
 
             if file_sha256_string != aws_file_sha256_string:
-                self._logger.info('Updating lambda for code change')
+                self._logger.info('%s: updating lambda function for intrinsic code change', name)
             elif any(layer_updates):
-                self._logger.info('Updating lambda for related layer change')
+                self._logger.info('%s: updating lambda only for related layer code change', name)
             elif layer_count != len(layer_arns):
-                self._logger.info('Updating lambda for added or removed layers')
+                self._logger.info('%s: updating lambda for added or removed layers', name)
             else:
-                self._logger.info('No lambda function code change and no layer related layer changes; '
-                                  'no lambda function update required')
+                self._logger.info('%s: no lambda function code nor related layer changes; no update required', name)
                 return function_arn
 
             self._update_function(
@@ -287,9 +274,7 @@ class AwsLambda:
         else:
             raise RuntimeError(f'Unsupported deployment format: {layer_format}')
 
-        file_sha256 = hashlib.sha256()
-        file_sha256.update(zip_file_bytes)
-        file_sha256_string = base64.b64encode(file_sha256.digest()).decode()
+        file_sha256_string = madeira.get_base64_sum_of_data(zip_file_bytes)
 
         for lambda_layer_version in self.list_layer_versions(name):
             layer_version_meta = self.lambda_client.get_layer_version_by_arn(
