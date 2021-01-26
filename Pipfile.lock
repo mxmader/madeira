@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "53701378e0652c0ceda497d04ff5e82ff738b14e73f85dc4b0cff5660c00c50e"
+            "sha256": "68bfa9c8ba3179b54a77649753ce46278155416f6008ad5aed20e0ddcaa9e6af"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -64,6 +64,11 @@
         "madeira": {
             "editable": true,
             "path": ".",
+            "version": "*"
+        },
+        "madeira-utils": {
+            "editable": true,
+            "path": "./../madeira-utils",
             "version": "*"
         },
         "python-dateutil": {

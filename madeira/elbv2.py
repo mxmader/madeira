@@ -1,12 +1,14 @@
-import madeira
-import boto3
+from madeira import session
+import madeira_utils
 
 
 class ElbV2(object):
 
-    def __init__(self, logger=None):
-        self._logger = logger if logger else madeira.get_logger()
-        self.elbv2_client = boto3.client('elbv2')
+    def __init__(self, logger=None, profile_name=None, region=None):
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+
+        self.elbv2_client = self._session.session.client('elbv2')
 
     def disable_termination_protection(self, arn):
         return self.elbv2_client.modify_load_balancer_attributes(

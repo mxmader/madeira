@@ -1,20 +1,19 @@
-import madeira
-import botocore.exceptions
-import boto3
 import time
+
+import botocore.exceptions
+from madeira import session, sts
+import madeira_utils
 
 
 class Vpc(object):
+
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._session = boto3.session.Session(
-            profile_name=profile_name, region_name=region
-        )
-        self.ec2_client = self._session.client("ec2")
-        self.ec2_resource = self._session.resource("ec2")
-        self._account_id = (
-            self._session.client("sts").get_caller_identity().get("Account")
-        )
-        self._logger = logger if logger else madeira.get_logger()
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+        self._sts = sts.Sts(logger=logger, profile_name=None, region=None)
+
+        self.ec2_client = self._session.session.client("ec2")
+        self.ec2_resource = self._session.session.resource("ec2")
         self._vpc_delete_wait = 30
 
     def _add_name_to_subnets(self, subnets):
@@ -76,7 +75,7 @@ class Vpc(object):
                     VpcPeeringConnectionIds=[peering_id])
                 self._logger.debug("VPC Peering Connection %s is now available", peering_id)
                 break
-            except botocore.exceptions.ClientError as e:
+            except self.ec2_client.exceptions.ClientError as e:
                 if "InvalidVpcPeeringConnectionID.NotFound" not in str(e):
                     raise
 
@@ -97,7 +96,7 @@ class Vpc(object):
         self._logger.info(
             "Accepting peering connection: %s in account: %s",
             peering_id,
-            self._account_id,
+            self._sts.account_id,
         )
         self._peering_connection_wait(peering_id)
         self.ec2_client.create_tags(
@@ -186,7 +185,7 @@ class Vpc(object):
                 self.ec2_client.describe_route_tables(RouteTableIds=[route_table_id])
                 self._logger.debug("Route Table %s is now available", route_table_id)
                 break
-            except botocore.exceptions.ClientError as e:
+            except self.ec2_client.exceptions.ClientError as e:
                 if "InvalidRouteTableID.NotFound" not in str(e):
                     raise
 
@@ -231,14 +230,14 @@ class Vpc(object):
                 cidr_block,
                 route_table_id,
                 vpc_peer_conn_id,
-                self._account_id,
+                self._sts.account_id,
             )
             return self.ec2_client.create_route(
                 DestinationCidrBlock=cidr_block,
                 RouteTableId=route_table_id,
                 VpcPeeringConnectionId=vpc_peer_conn_id,
             )
-        except botocore.exceptions.ClientError as e:
+        except self.ec2_client.exceptions.ClientError as e:
             if "RouteAlreadyExists" in str(e):
                 self._logger.info("Route already exists")
                 return
@@ -285,7 +284,7 @@ class Vpc(object):
                 subnet = self.ec2_client.describe_subnets(SubnetIds=[subnet_id]).get(
                     "Subnets"
                 )[0]
-            except botocore.exceptions.ClientError as e:
+            except self.ec2_client.exceptions.ClientError as e:
                 if "InvalidSubnetID.NotFound" not in str(e):
                     raise
 
@@ -335,6 +334,8 @@ class Vpc(object):
                     {"Name": "vpc-id", "Values": [vpc.id]},
                 ]
             )
+        # TODO: figure out if there's a client or resource-specific way of doing this so we don't
+        # have to rely on botocore.exceptions.
         except botocore.exceptions.WaiterError:
             self._logger.debug("VPC waiter not yet ready - trying again")
             time.sleep(5)
@@ -349,40 +350,22 @@ class Vpc(object):
         return vpc.id
 
     def create_vpc_peering_connection(self, vpc_id, peer_account_id, peer_vpc_id, name):
-        vpc_peering_connection_id = self.get_vpc_peering_connection_id(
-            vpc_id, peer_account_id, peer_vpc_id
-        )
+        vpc_peering_connection_id = self.get_vpc_peering_connection_id(vpc_id, peer_account_id, peer_vpc_id)
         if vpc_peering_connection_id:
-            self._logger.info(
-                "VPC peering from %s in account %s to %s in account %s already exists",
-                vpc_id,
-                self._account_id,
-                peer_vpc_id,
-                peer_account_id,
-            )
+            self._logger.info("VPC peering from %s in account %s to %s in account %s already exists",
+                              vpc_id, self._sts.account_id, peer_vpc_id, peer_account_id,)
             return vpc_peering_connection_id
 
-        self._logger.info(
-            "Requesting VPC peering from %s in account %s to %s in account %s",
-            vpc_id,
-            self._account_id,
-            peer_vpc_id,
-            peer_account_id,
-        )
+        self._logger.info("Requesting VPC peering from %s in account %s to %s in account %s",
+                          vpc_id, self._sts.account_id, peer_vpc_id, peer_account_id)
         # TODO: monitor the status and return peering connection ID once in "pending-acceptance" state
-        vpc_peer_conn_id = (
-            self.ec2_client.create_vpc_peering_connection(
-                PeerOwnerId=peer_account_id, PeerVpcId=peer_vpc_id, VpcId=vpc_id
-            )
-            .get("VpcPeeringConnection")
-            .get("VpcPeeringConnectionId")
-        )
+        vpc_peer_conn_id = self.ec2_client.create_vpc_peering_connection(
+            PeerOwnerId=peer_account_id, PeerVpcId=peer_vpc_id, VpcId=vpc_id
+        ).get("VpcPeeringConnection").get("VpcPeeringConnectionId")
 
         # appears to be only way to name a VPC peering connection as of 2/13/2020
         self._peering_connection_wait(vpc_peer_conn_id)
-        self.ec2_client.create_tags(
-            Resources=[vpc_peer_conn_id], Tags=[{"Key": "Name", "Value": name}]
-        )
+        self.ec2_client.create_tags(Resources=[vpc_peer_conn_id], Tags=[{"Key": "Name", "Value": name}])
         return vpc_peer_conn_id
 
     def delete_vpc(self, vpc_id):
@@ -502,12 +485,12 @@ class Vpc(object):
                 "Deleting route to CIDR: %s in route table: %s in account: %s",
                 cidr_block,
                 route_table_id,
-                self._account_id,
+                self._sts.account_id,
             )
             self.ec2_client.delete_route(
                 DestinationCidrBlock=cidr_block, RouteTableId=route_table_id
             )
-        except botocore.exceptions.ClientError as e:
+        except self.ec2_client.exceptions.ClientError as e:
             if "InvalidRoute.NotFound" in str(e):
                 self._logger.info("  route does not exist")
                 return
@@ -528,7 +511,10 @@ class Vpc(object):
             for tag in vpc["Tags"]:
                 if tag["Key"] == "Name" and tag["Value"] == vpc_name:
                     return vpc
-        return ""
+        return {}
+
+    def get_vpc_id_by_name(self, vpc_name):
+        return self.get_vpc_by_name(vpc_name).get('VpcId')
 
     def get_vpc_peering_connection_id(self, vpc_id, peer_account_id, peer_vpc_id):
         vpc_peering_conns = self.ec2_client.describe_vpc_peering_connections(

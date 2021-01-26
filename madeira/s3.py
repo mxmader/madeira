@@ -1,18 +1,23 @@
-from madeira import sts
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
-import madeira
-import botocore.exceptions
-import boto3
 import json
+
+from madeira import session, sts
+import madeira_utils
+from madeira_utils import utils
 
 
 class S3(object):
-    def __init__(self, logger=None):
-        self.s3_client = boto3.client("s3")
-        self.s3_resource = boto3.resource("s3")
-        self._sts_wrapper = sts.Sts()
-        self._logger = logger if logger else madeira.get_logger()
+    def __init__(self, logger=None, profile_name=None, region=None):
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+        self._sts = sts.Sts(logger=logger, profile_name=None, region=None)
+
+        self.s3_client = self._session.session.client("s3")
+        self.s3_control_client = self._session.session.client("s3control")
+        self.s3_resource = self._session.session.resource("s3")
+
+        self.utils = utils.Utils(logger=logger)
 
     @staticmethod
     def _get_retention_end_date(retain_years=7):
@@ -77,7 +82,7 @@ class S3(object):
         try:
             self.s3_resource.meta.client.head_bucket(Bucket=bucket_name)
             return True
-        except botocore.exceptions.ClientError as e:
+        except self.s3_client.exceptions.ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
 
             if error_code == "403":  # bucket exists, but we don't have permissions to it
@@ -88,9 +93,7 @@ class S3(object):
                 raise e
 
     def get_all_buckets(self):
-        return [
-            bucket["Name"] for bucket in self.s3_client.list_buckets().get("Buckets")
-        ]
+        return [bucket["Name"] for bucket in self.s3_client.list_buckets().get("Buckets")]
 
     def get_all_object_keys(self, bucket, prefix=""):
         """
@@ -100,9 +103,7 @@ class S3(object):
         paginator = self.s3_client.get_paginator("list_objects")
         page_iterator = paginator.paginate(Bucket=bucket, Prefix=prefix)
         try:
-            return [
-                key for page in page_iterator for key in page.get("Contents", [])
-            ]
+            return [key for page in page_iterator for key in page.get("Contents", [])]
         except self.s3_client.exceptions.NoSuchBucket:
             self._logger.warning("Bucket: %s does not exist", bucket)
 
@@ -182,7 +183,7 @@ class S3(object):
 
     def get_object_md5_base64(self, bucket_name, object_key):
         source_object = self.s3_client.get_object(Bucket=bucket_name, Key=object_key)
-        return madeira.get_base64_sum_of_stream(source_object.get("Body"), hash_type='md5')
+        return self.utils.get_base64_sum_of_stream(source_object.get("Body"), hash_type='md5')
 
     def put_object(self, bucket_name, object_key, body, encoding="utf-8", md5=None, as_json=False,
                    content_type=None):
@@ -210,17 +211,15 @@ class S3(object):
 
     def set_no_public_access_on_account(self):
         self._logger.info(
-            "Blocking all public access attributes for all future bucket creation"
-        )
-        s3_control = boto3.client("s3control")
-        return s3_control.put_public_access_block(
+            "Blocking all public access attributes for all future bucket creation in account: %s", self._sts.account_id)
+        return self.s3_control_client.put_public_access_block(
             PublicAccessBlockConfiguration={
                 "BlockPublicAcls": True,
                 "IgnorePublicAcls": True,
                 "BlockPublicPolicy": True,
                 "RestrictPublicBuckets": True,
             },
-            AccountId=self._sts_wrapper.get_account_id(),
+            AccountId=self._sts.account_id
         )
 
     def set_object_lock(self, bucket_name, object_key, retention_mode, retention_years):
@@ -231,5 +230,43 @@ class S3(object):
             Retention={
                 "Mode": retention_mode,
                 "RetainUntilDate": self._get_retention_end_date(retention_years),
-            },
+            }
         )
+
+    def sync_files(self, bucket, files):
+        changed_files = []
+        for file in files:
+            result = self.upload_asset(bucket, file['name'], file['root'])
+            changed_files.append(result)
+        return changed_files
+
+    def upload_asset(self, bucket, file, root):
+        object_key = file
+        local_path = f"{root}{file}"
+        binary = False
+
+        if file.endswith('.html'):
+            content_type = 'text/html'
+        elif file.endswith('.css'):
+            content_type = 'text/css'
+        elif file.endswith('.js'):
+            content_type = 'text/javascript'
+        elif file.endswith('.ico'):
+            binary = True
+            content_type = 'image/x-icon'
+        else:
+            content_type = 'text/plain'
+
+        # TODO handle object not found exceptions upstream...
+        self._logger.debug("%s: processing as %s; binary=%s", local_path, content_type, binary)
+        base64_md5_local = self.utils.get_base64_sum_of_file(local_path, hash_type='md5')
+        self._logger.debug("%s: Local copy base64 md5: %s", local_path, base64_md5_local)
+        base64_md5_in_s3 = self.get_object_md5_base64(bucket, object_key)
+        self._logger.debug("%s: S3 object base64 md5: %s", local_path, base64_md5_in_s3)
+
+        if base64_md5_local == base64_md5_in_s3:
+            self._logger.info('Checksums of local and S3 copies of %s are identical; skipping', local_path)
+            return False
+
+        return self.put_object(
+            bucket, object_key, self.utils.get_file_content(local_path, binary=binary), content_type=content_type)

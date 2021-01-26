@@ -1,12 +1,13 @@
-import madeira
-import boto3
+from madeira import session
+import madeira_utils
 
 
 class Logs(object):
 
-    def __init__(self, logger=None, region=None):
-        self.logs_client = boto3.client('logs', region_name=region)
-        self._logger = logger if logger else madeira.get_logger()
+    def __init__(self, logger=None, profile_name=None, region=None):
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+        self.logs_client = self._session.session.client('logs')
 
     def get_log_groups(self):
         return self.logs_client.describe_log_groups().get('logGroups')

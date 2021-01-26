@@ -1,15 +1,16 @@
-import madeira
-import boto3
-import botocore.exceptions
 import time
 
+from madeira import session
+import madeira_utils
 
-class Cf(object):
+
+class CloudFormation(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._session = boto3.session.Session(profile_name=profile_name, region_name=region)
-        self.cf_client = self._session.client('cloudformation')
-        self._logger = logger if logger else madeira.get_logger()
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+
+        self.cf_client = self._session.session.client('cloudformation')
         self._max_status_checks = 20
         self._status_check_interval = 20
 
@@ -25,30 +26,31 @@ class Cf(object):
 
             try:
                 stack = self.cf_client.describe_stacks(StackName=stack_name)['Stacks'][0]
-            except botocore.exceptions.ClientError as e:
+            except self.cf_client.exceptions.ClientError as e:
                 stack_missing_msg = f'Stack with id {stack_name} does not exist'
                 if stack_missing_msg in str(e) and desired_status == 'DELETE_COMPLETE':
                     return True
                 else:
                     raise
 
-            if stack['StackStatus'].startswith('UPDATE_ROLLBACK_') or stack['StackStatus'].startswith('ROLLBACK_'):
-                self._logger.error('CF stack %s has known bad status: %s', stack['StackName'], stack['StackStatus'])
-                self._logger.error('Please fix the issue, delete the CF stack, and try again.')
+            if stack['StackStatus'].startswith('ROLLBACK_'):
+                self._logger.error('%s: cloudformation stack cannot be deployed due to status: %s - delete and re-try',
+                                   stack['StackName'], stack['StackStatus'])
                 return False
 
             elif stack['StackStatus'] == 'DELETE_FAILED':
-                self._logger.critical('Stack %s deletion failed. Please check the AWS console.', stack['StackName'])
+                self._logger.critical('%s: cloudformation stack deletion failed - please investigate',
+                                      stack['StackName'])
                 return False
 
             elif stack['StackStatus'] == desired_status:
-                self._logger.info('Stack %s deployment complete', stack['StackName'])
+                self._logger.info('%s: cloudformation stack deployment complete', stack['StackName'])
                 return True
 
-            self._logger.debug('CF stack status is: %s - waiting...', stack['StackStatus'])
+            self._logger.debug('%s: status: %s - waiting...', stack['StackName'], stack['StackStatus'])
 
             if status_check >= max_status_checks:
-                raise RuntimeError('Timed out waiting for CF template to deploy')
+                raise RuntimeError('%s: deployment timed out')
 
             time.sleep(status_check_interval)
 
@@ -59,11 +61,9 @@ class Cf(object):
                 self._logger.warning('Stack with name: %s already exists - skipping', stack_name)
                 return False
 
-        # TODO: clean this up once the CF client object's "exceptions" property has a clean
-        # exception to process consistent with other AWS service-specific exceptions
-        except botocore.exceptions.ClientError as e:
+        except self.cf_client.exceptions.ClientError as e:
             if f'Stack with id {stack_name} does not exist' in str(e):
-                self._logger.debug('Stack %s does not exist', stack_name)
+                self._logger.debug('%s: cloudformation stack does not exist', stack_name)
             else:
                 raise
 
@@ -73,7 +73,7 @@ class Cf(object):
         if not tags:
             tags = []
 
-        self._logger.info('Requesting creation of stack: %s', stack_name)
+        self._logger.info('%s: requesting creation of stack', stack_name)
         response = self.cf_client.create_stack(
             StackName=stack_name,
             Capabilities=['CAPABILITY_NAMED_IAM'],
@@ -84,7 +84,7 @@ class Cf(object):
         )
 
         stack_arn = response['StackId']
-        self._logger.debug('New stack ARN: %s', stack_arn)
+        self._logger.debug('%s: cloudformation stack ARN: %s', stack_name, stack_arn)
 
         result = self._wait_for_status(stack_name, 'CREATE_COMPLETE', max_status_checks=max_status_checks,
                                        status_check_interval=status_check_interval)
@@ -94,18 +94,17 @@ class Cf(object):
     def create_or_update_stack(self, stack_name, template_body, params=None, tags=None, termination_protection=True,
                                max_status_checks=None, status_check_interval=None):
         try:
-            # update the existing stack if it exists
             if self.cf_client.describe_stacks(StackName=stack_name):
+                # update the existing stack
+                self._logger.info('%s: cloudformation stack already exists - may need update', stack_name)
                 return self.update_stack(stack_name, template_body, params=params, tags=tags,
                                          max_status_checks=max_status_checks,
                                          status_check_interval=status_check_interval)
 
-        # TODO: clean this up once the CF client object's "exceptions" property has a clean
-        # exception to process consistent with other AWS service-specific exceptions
-        except botocore.exceptions.ClientError as e:
+        except self.cf_client.exceptions.ClientError as e:
 
-            # create the stack that does not exist
             if f'Stack with id {stack_name} does not exist' in str(e):
+                # create the stack that does not exist
                 return self.create_stack(stack_name, template_body, params=params, tags=tags,
                                          termination_protection=termination_protection,
                                          max_status_checks=max_status_checks,
@@ -182,7 +181,7 @@ class Cf(object):
         stack = self.get_stack(stack_name)
 
         if not stack:
-            self._logger.info('Stack: %s does not exist', stack_name)
+            self._logger.info('%s: cloudformation stack does not exist', stack_name)
             return
 
         if stack['StackStatus'] in ['DELETE_COMPLETE', 'DELETE_IN_PROGRESS']:
@@ -202,7 +201,7 @@ class Cf(object):
     def get_stack(self, stack_name):
         try:
             return self.cf_client.describe_stacks(StackName=stack_name)['Stacks'][0]
-        except botocore.exceptions.ClientError as e:
+        except self.cf_client.exceptions.ClientError as e:
             if 'does not exist' in str(e):
                 return
             else:
@@ -217,26 +216,22 @@ class Cf(object):
 
     def update_stack(self, stack_name, template_body, params=None, tags=None,
                      max_status_checks=None, status_check_interval=None):
+        existing_stack = {}
         try:
             existing_stack = self.cf_client.describe_stacks(StackName=stack_name).get('Stacks')[0]
             if (existing_stack['StackStatus'].startswith('DELETE') or
                     existing_stack['StackStatus'].startswith('ROLLBACK')):
                 self._logger.error('Stack: %s has status: %s which is impossible to update', stack_name,
                                    existing_stack['StackStatus'])
-                return False
+                return existing_stack.get('Arn')
 
-        except botocore.exceptions.ClientError as e:
+        except self.cf_client.exceptions.ClientError as e:
             if f'Stack with id {stack_name} does not exist' in str(e):
-                self._logger.debug('Stack %s does not exist', stack_name)
-                return False
+                self._logger.debug('%s: cloudformation stack does not exist', stack_name)
+                return
 
-        if not params:
-            params = []
-
-        if not tags:
-            tags = []
-
-        self._logger.info('Requesting update of stack: %s', stack_name)
+        params = params if params else []
+        tags = tags if tags else []
 
         try:
             self.cf_client.update_stack(
@@ -246,13 +241,14 @@ class Cf(object):
                 TemplateBody=template_body,
                 Tags=tags
             )
-        except botocore.exceptions.ClientError as e:
+            self._logger.info('%s: updating stack', stack_name)
+        except self.cf_client.exceptions.ClientError as e:
             if 'No updates are to be performed' in str(e):
-                self._logger.info('No updates are required for this stack at this time')
-                return True
+                self._logger.info('%s: cloudformation stack update not required', stack_name)
+                return existing_stack.get('Arn')
             else:
                 raise
 
-        # TODO: should we bother to return the stack ARN as in create_stack?
-        return self._wait_for_status(stack_name, 'UPDATE_COMPLETE', max_status_checks=max_status_checks,
-                                     status_check_interval=status_check_interval)
+        self._wait_for_status(stack_name, 'UPDATE_COMPLETE', max_status_checks=max_status_checks,
+                              status_check_interval=status_check_interval)
+        return existing_stack.get('Arn')

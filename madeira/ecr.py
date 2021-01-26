@@ -1,14 +1,17 @@
-import boto3
 import json
-import madeira
+
+from madeira import session, sts
+import madeira_utils
 
 
 class Ecr(object):
+
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._session = boto3.session.Session(profile_name=profile_name, region_name=region)
-        self.ecr_client = self._session.client("ecr")
-        self._account_id = (self._session.client("sts").get_caller_identity().get("Account"))
-        self._logger = logger if logger else madeira.get_logger()
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+        self._sts = sts.Sts(logger=logger, profile_name=None, region=None)
+
+        self.ecr_client = self._session.session.client("ecr")
 
     def _get_registry_id_for_repo(self, repo_name):
         for repo in self.ecr_client.describe_repositories().get("repositories"):

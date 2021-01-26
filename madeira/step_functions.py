@@ -1,16 +1,17 @@
-from madeira import session, sts
-import madeira
-import boto3
 import time
+
+from madeira import session, sts
+import madeira_utils
 
 
 class StepFunctions:
 
-    def __init__(self, logger=None):
-        self.step_functions_client = boto3.client('stepfunctions')
-        self._logger = logger if logger else madeira.get_logger()
-        self._session_wrapper = session.Session()
-        self._sts_wrapper = sts.Sts(logger=logger)
+    def __init__(self, logger=None, profile_name=None, region=None):
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+        self._sts = sts.Sts(logger=logger, profile_name=None, region=None)
+
+        self.step_functions_client = self._session.session.client('stepfunctions')
 
     def create_state_machine(self, name, definition, role_arn, attempt=1):
         if attempt > 10:
@@ -31,8 +32,8 @@ class StepFunctions:
 
     def create_or_update_state_machine(self, name, definition, role_arn):
         try:
-            state_machine_arn = (f'arn:aws:states:{self._session_wrapper.get_region_name()}:'
-                                 f'{self._sts_wrapper.get_account_id()}:stateMachine:{name}')
+            state_machine_arn = (f'arn:aws:states:{self._session.region}:'
+                                 f'{self._sts.account_id}:stateMachine:{name}')
             state_machine = self.step_functions_client.describe_state_machine(stateMachineArn=state_machine_arn)
             if state_machine['status'] == 'DELETING':
                 return self.create_state_machine(name, definition, role_arn)

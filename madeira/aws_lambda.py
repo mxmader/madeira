@@ -1,24 +1,23 @@
-import os
 import time
-import zipfile
-from io import BytesIO
 
-import boto3
-
-import madeira
-from madeira import sts
+import madeira_utils
+from madeira_utils import utils
+from madeira import session, sts
 
 
 class AwsLambda:
 
-    def __init__(self, logger=None):
-        self.lambda_client = boto3.client('lambda')
-        self._sts_wrapper = sts.Sts()
-        self._logger = logger if logger else madeira.get_logger()
+    def __init__(self, logger=None, profile_name=None, region=None):
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+        self._sts = sts.Sts(logger=logger, profile_name=None, region=None)
+
+        self.lambda_client = self._session.session.client('lambda')
+        self.utils = utils.Utils(logger=logger)
 
     def _create_function(self, name, role, function_file_path, description='', vpc_config=None, memory_size=128,
-                         timeout=30, reserved_concurrency=None, layer_arns=None, function_is_zip=False,
-                         runtime='python3.8', handler='handler.handler'):
+                         timeout=30, reserved_concurrency=None, layer_arns=None, runtime='python3.8',
+                         handler='handler.handler'):
         if not layer_arns:
             layer_arns = []
 
@@ -32,7 +31,7 @@ class AwsLambda:
                 Runtime=runtime,
                 Role=role,
                 Handler=handler,
-                Code={'ZipFile': self._get_zip_content(function_file_path, function_is_zip)},
+                Code={'ZipFile': self.utils.get_zip_content(function_file_path)},
                 Description=description,
                 Timeout=timeout,
                 Layers=layer_arns,
@@ -49,67 +48,6 @@ class AwsLambda:
 
         return function_arn
 
-    @staticmethod
-    def _get_zip_object():
-        in_memory_zip = BytesIO()
-        zip_file = zipfile.ZipFile(in_memory_zip, mode="w", compression=zipfile.ZIP_DEFLATED, allowZip64=False)
-        return in_memory_zip, zip_file
-
-    def _get_function_zip(self, function_file_path):
-        in_memory_zip, zip_file = self._get_zip_object()
-
-        with open(function_file_path, 'r') as f:
-            file_content = f.read()
-
-        # from https://forums.aws.amazon.com/thread.jspa?threadID=239601
-        zip_info = zipfile.ZipInfo('handler.py')
-        zip_info.compress_type = zipfile.ZIP_DEFLATED
-        zip_info.create_system = 3  # Specifies Unix
-        zip_info.external_attr = 0o0777 << 16  # adjusted for python 3
-        zip_file.writestr(zip_info, file_content)
-        zip_file.close()
-
-        # move file cursor to start of in-memory zip file for purposes of uploading to AWS
-        in_memory_zip.seek(0)
-        return in_memory_zip
-
-    # TODO: to general purpose module
-    def _get_layer_zip(self, layer_path):
-        in_memory_zip, zip_file = self._get_zip_object()
-
-        cwd = os.getcwd()
-        os.chdir(layer_path)
-        for root, dirs, files in os.walk('.'):
-            if '__pycache__' in root or not files:
-                continue
-
-            # add each file in the layer to the in-memory zip
-            for file in files:
-                file_path = f'{root}/{file}'
-                with open(file_path, 'r') as f:
-                    file_content = f.read()
-                zip_info = zipfile.ZipInfo(file_path)
-                zip_info.compress_type = zipfile.ZIP_DEFLATED
-                zip_info.create_system = 3  # Specifies Unix
-                zip_info.external_attr = 0o0777 << 16  # adjusted for python 3
-                zip_file.writestr(zip_info, file_content)
-
-        os.chdir(cwd)
-        zip_file.close()
-        in_memory_zip.seek(0)
-        return in_memory_zip
-
-    # TODO: to general purpose module
-    def _get_zip_content(self, function_file_path, function_is_zip):
-        if function_is_zip:
-            with open(function_file_path, 'rb') as f:
-                zip_file_content = f.read()
-        else:
-            in_memory_zip = self._get_function_zip(function_file_path)
-            zip_file_content = in_memory_zip.getvalue()
-
-        return zip_file_content
-
     def _set_reserved_concurrency(self, name, reserved_concurrency):
         if reserved_concurrency:
             self._logger.info('setting reserved concurrency to %s on function %s', reserved_concurrency, name)
@@ -117,21 +55,21 @@ class AwsLambda:
                 FunctionName=name, ReservedConcurrentExecutions=reserved_concurrency)
 
     def _update_function(self, name, role, function_file_path, description='', vpc_config=None, memory_size=128,
-                         timeout=30, reserved_concurrency=None, layer_arns=None, function_is_zip=False,
-                         runtime='python-3.8', handler='handler.handler'):
+                         timeout=30, reserved_concurrency=None, layer_arns=None, runtime='python-3.8',
+                         handler='handler.handler'):
         if not layer_arns:
             layer_arns = []
 
         if not vpc_config:
             vpc_config = {}
 
-        self._logger.info('Updating code')
+        self._logger.info('%s: updating lambda function code', name)
         self.lambda_client.update_function_code(
             FunctionName=name,
-            ZipFile=self._get_zip_content(function_file_path, function_is_zip),
+            ZipFile=self.utils.get_zip_content(function_file_path),
             Publish=True
         )
-        self._logger.info('Updating function configuration')
+        self._logger.info('%s: updating lambda function configuration', name)
         self.lambda_client.update_function_configuration(
             FunctionName=name,
             Runtime=runtime,
@@ -185,57 +123,63 @@ class AwsLambda:
             Action='lambda:InvokeFunction',
             FunctionName=name,
             Principal='s3.amazonaws.com',
-            SourceAccount=self._sts_wrapper.get_account_id(),
+            SourceAccount=self._sts.account_id,
             SourceArn=f'arn:aws:s3:::{bucket}',
             StatementId=f'permission_for_{bucket}'
         )
 
     def create_or_update_function(self, name, role, function_file_path, description='', vpc_config=None,
-                                  memory_size=128, timeout=30, reserved_concurrency=None, layer_arns=None,
-                                  function_is_zip=False, layer_updates=None, runtime='python3.8',
-                                  handler='handler.handler'):
-        if not layer_updates:
-            layer_updates = []
+                                  memory_size=128, timeout=30, reserved_concurrency=None, layers=None,
+                                  runtime='python3.8', handler='handler.handler'):
+        layer_arns = [layer_meta['arn'] for name, layer_meta in layers.items()]
+        layers_updated = [name for name, layer_meta in layers.items() if layer_meta['updated']]
 
         try:
             lambda_function = self.lambda_client.get_function(FunctionName=name)
             self._logger.debug('%s: lambda function: already exists; checking on updates', name)
             function_arn = lambda_function['Configuration']['FunctionArn']
-            layer_count = len(lambda_function['Configuration']['Layers'])
+            existing_layers = [layer['Arn'] for layer in lambda_function['Configuration']['Layers']]
+
+            added_layers = [layer_arn for layer_arn in layer_arns if layer_arn not in existing_layers]
+            removed_layers = [layer_arn for layer_arn in existing_layers if layer_arn not in layer_arns]
 
             # Calculate the SHA256 checksum of the file (whether a zip file or not)
-            file_sha256_string = madeira.get_base64_sum_of_file(function_file_path)
+            file_sha256_string = self.utils.get_base64_sum_of_file(function_file_path)
 
-            if function_is_zip:
+            if function_file_path.endswith('.zip'):
                 aws_file_sha256_string = lambda_function.get('Configuration').get('CodeSha256')
             else:
                 # AWS stores lambdas in zip files in a "hidden" S3 bucket - we need to extract the handler as-stored
                 # in S3 in order to compare it to our local file. This reads the whole encapsulating zip in memory;
                 # we're assuming all lambdas stay relatively small
-                aws_file_sha256_string = madeira.get_base64_sum_of_file_in_zip_from_url(
+                aws_file_sha256_string = self.utils.get_base64_sum_of_file_in_zip_from_url(
                     lambda_function.get('Code').get('Location'), 'handler.py')
 
             if file_sha256_string != aws_file_sha256_string:
                 self._logger.info('%s: updating lambda function for intrinsic code change', name)
-            elif any(layer_updates):
-                self._logger.info('%s: updating lambda only for related layer code change', name)
-            elif layer_count != len(layer_arns):
-                self._logger.info('%s: updating lambda for added or removed layers', name)
+            elif layers_updated:
+                self._logger.info(
+                    '%s: updating lambda only for code changed in related layers: %s', name, layers_updated)
+            elif added_layers or removed_layers:
+                if added_layers:
+                    self._logger.info('%s: updating lambda function for added layers: %s', name, added_layers)
+                if removed_layers:
+                    self._logger.info('%s: updating lambda function for removed layers: %s', name, removed_layers)
             else:
                 self._logger.info('%s: no lambda function code nor related layer changes; no update required', name)
                 return function_arn
 
             self._update_function(
-                name, role, function_file_path, description=description, vpc_config=vpc_config,
-                memory_size=memory_size, timeout=timeout, reserved_concurrency=reserved_concurrency,
-                layer_arns=layer_arns, function_is_zip=function_is_zip, runtime=runtime, handler=handler)
+                name, role, function_file_path, description=description, vpc_config=vpc_config, memory_size=memory_size,
+                timeout=timeout, reserved_concurrency=reserved_concurrency, layer_arns=layer_arns, runtime=runtime,
+                handler=handler)
 
         except self.lambda_client.exceptions.ResourceNotFoundException:
             self._logger.info('Function: %s does not yet exist', name)
             function_arn = self._create_function(
                 name, role, function_file_path, description=description, vpc_config=vpc_config, memory_size=memory_size,
-                timeout=timeout, reserved_concurrency=reserved_concurrency, layer_arns=layer_arns,
-                function_is_zip=function_is_zip, runtime=runtime, handler=handler)
+                timeout=timeout, reserved_concurrency=reserved_concurrency, layer_arns=layer_arns, runtime=runtime,
+                handler=handler)
 
         # VPC-scoped lambdas sometimes take more time to spin up, so we wait for their final state
         if vpc_config:
@@ -261,20 +205,18 @@ class AwsLambda:
         except self.lambda_client.exceptions.ResourceNotFoundException:
             self._logger.warning('Layer: %s version: %s does not exist', name, version)
 
-    def deploy_layer(self, name, layer_path, description='', runtimes=None, layer_format='directory'):
-        # for layers that consist simply of a flat directory (no subdirs) with code (text) files.
-        if layer_format == 'directory':
-            in_memory_zip = self._get_layer_zip(layer_path)
-            zip_file_bytes = in_memory_zip.getvalue()
-
+    def deploy_layer(self, name, layer_path, description='', runtimes=None):
         # for layers with more complexity that are better off "just zipped"
-        elif layer_format == 'zipfile':
+        if layer_path.endswith('.zip'):
             with open(layer_path, 'rb') as f:
                 zip_file_bytes = f.read()
-        else:
-            raise RuntimeError(f'Unsupported deployment format: {layer_format}')
 
-        file_sha256_string = madeira.get_base64_sum_of_data(zip_file_bytes)
+        # for layers that consist simply of a flat directory (no subdirs) with code (text) files.
+        else:
+            in_memory_zip = self.utils.get_layer_zip(layer_path)
+            zip_file_bytes = in_memory_zip.getvalue()
+
+        file_sha256_string = self.utils.get_base64_sum_of_data(zip_file_bytes)
 
         for lambda_layer_version in self.list_layer_versions(name):
             layer_version_meta = self.lambda_client.get_layer_version_by_arn(
@@ -282,7 +224,7 @@ class AwsLambda:
             aws_sha256_string = layer_version_meta['Content']['CodeSha256']
             if aws_sha256_string == file_sha256_string:
                 self._logger.info('Layer with ARN: %s is already current', lambda_layer_version['LayerVersionArn'])
-                return lambda_layer_version['LayerVersionArn'], False
+                return {'arn': lambda_layer_version['LayerVersionArn'], 'updated': False}
 
         if not runtimes:
             runtimes = ['python3.8']
@@ -295,7 +237,10 @@ class AwsLambda:
             Content={'ZipFile': zip_file_bytes},
             CompatibleRuntimes=runtimes).get('LayerVersionArn')
         self._logger.debug('Layer ARN: %s', layer_arn)
-        return layer_arn, True
+        return {'arn': layer_arn, 'updated': True}
+
+    def get_function_arn(self, name):
+        return f"arn:aws:lambda:{self._session.region}:{self._sts.account_id}:function:{name}"
 
     def list_functions(self):
         response = self.lambda_client.list_functions()

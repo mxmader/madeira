@@ -1,12 +1,13 @@
-import madeira
-import boto3
+from madeira import session
+import madeira_utils
 
 
 class Kms(object):
 
-    def __init__(self, logger=None, region=None):
-        self.kms_client = boto3.client('kms', region_name=region)
-        self._logger = logger if logger else madeira.get_logger()
+    def __init__(self, logger=None, profile_name=None, region=None):
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+        self.kms_client = self._session.session.client('kms')
 
     def get_key(self, key_id):
         return self.kms_client.describe_key(KeyId=key_id)
