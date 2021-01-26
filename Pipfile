@@ -7,6 +7,7 @@ verify_ssl = true
 
 [packages]
 madeira = {version = "*",path = ".",editable = true}
+madeira-utils = {version = "*",path = "../madeira-utils",editable = true}
 
 [requires]
 python_version = "3.8"

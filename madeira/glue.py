@@ -1,14 +1,15 @@
-from madeira import kms
-import madeira
-import boto3
+from madeira import session, kms
+import madeira_utils
 
 
 class Glue(object):
 
-    def __init__(self, logger=None, region=None):
-        self.glue_client = boto3.client('glue', region_name=region)
-        self._kms_wrapper = kms.Kms()
-        self._logger = logger if logger else madeira.get_logger()
+    def __init__(self, logger=None, profile_name=None, region=None):
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+
+        self.glue_client = self._session.session.client('glue')
+        self._kms = kms.Kms(logger=logger, profile_name=profile_name, region=region)
 
     def create_database(self, database):
         try:

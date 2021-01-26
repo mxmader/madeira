@@ -1,23 +1,24 @@
 from madeira import kms, sts, session
-import madeira
-import boto3
+import madeira_utils
 import time
 
 
 class Athena(object):
 
-    def __init__(self, logger=None):
-        self.athena_client = boto3.client('athena')
-        self._kms_wrapper = kms.Kms()
-        self._sts_wrapper = sts.Sts()
-        self._session_wrapper = session.Session()
-        self._logger = logger if logger else madeira.get_logger()
+    def __init__(self, logger=None, profile_name=None, region=None):
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+        self._sts = sts.Sts(logger=logger, profile_name=profile_name, region=region)
+
+        self.athena_client = self._session.session.client('athena')
+        self._kms = kms.Kms(logger=logger, profile_name=profile_name, region=region)
+        self._logger = logger if logger else madeira_utils.get_logger()
         self._max_query_checks = 10
         self._interval = 3
 
     def _get_default_output_location(self):
-        return (f'aws-athena-query-results-{self._sts_wrapper.get_account_id()}-'
-                f'{self._session_wrapper.get_region_name()}')
+        return (f'aws-athena-query-results-{self._sts.account_id}-'
+                f'{self._session.region}')
 
     def execute_query(self, database, sql, output_location=None, workgroup='primary'):
         if not output_location:
@@ -32,7 +33,7 @@ class Athena(object):
         self._logger.debug('Query execution ID: %s', execution_id)
 
         # wait for query to complete and validate status
-        # TODO: let waiting parameters be overriden the method level
+        # TODO: let waiting parameters be overridden at the method level
         for i in range(0, self._max_query_checks):
 
             execution_status = self.athena_client.get_query_execution(
@@ -61,7 +62,7 @@ class Athena(object):
         # athena's API doesn't understand KMS key aliases, so we'll look up the ARN
         if kms_key == 'alias/aws/s3':
             self._logger.info('Looking up KMS key ARN for key: %s', kms_key)
-            kms_key = self._kms_wrapper.get_key(kms_key)['KeyMetadata']['Arn']
+            kms_key = self._kms.get_key(kms_key)['KeyMetadata']['Arn']
             self._logger.info('Got ARN: %s', kms_key)
 
         self._logger.info('Updating Athena default Workgroup configuration')

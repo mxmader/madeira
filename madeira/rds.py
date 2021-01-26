@@ -1,18 +1,17 @@
-import madeira
-import boto3
+from madeira import session
+import madeira_utils
 
 
 class RdsCluster(object):
 
-    def __init__(self, logger=None):
-        self._logger = logger if logger else madeira.get_logger()
-        self.rds_client = boto3.client('rds')
+    def __init__(self, logger=None, profile_name=None, region=None):
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+        self.rds_client = self._session.session.client('rds')
 
     def disable_cluster_termination_protection(self, cluster_id):
         return self.rds_client.modify_db_cluster(
-            DBClusterIdentifier=cluster_id,
-            DeletionProtection=False
-        )
+            DBClusterIdentifier=cluster_id, DeletionProtection=False)
 
     # TODO: find usage and replace with list_clusters
     def get_clusters(self):

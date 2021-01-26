@@ -1,16 +1,16 @@
 from datetime import datetime
-import madeira
-import boto3
-
 import time
+
+from madeira import session
+import madeira_utils
 
 
 class CloudFront(object):
-
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._logger = logger if logger else madeira.get_logger()
-        self._session = boto3.session.Session(profile_name=profile_name, region_name=region)
-        self.cloudfront_client = self._session.client('cloudfront')
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+
+        self.cloudfront_client = self._session.session.client('cloudfront')
 
     def get_distribution_by_hostname(self, hostname):
         for distro in self.cloudfront_client.list_distributions()['DistributionList']['Items']:

@@ -1,16 +1,16 @@
-import madeira
-import boto3
 import time
+
+from madeira import session
+import madeira_utils
 
 
 class Acm(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._session = boto3.session.Session(
-            profile_name=profile_name, region_name=region
-        )
-        self.acm_client = self._session.client('acm')
-        self._logger = logger if logger else madeira.get_logger()
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+
+        self.acm_client = self._session.session.client('acm')
         self._max_status_checks = 20
         self._status_check_interval = 20
 

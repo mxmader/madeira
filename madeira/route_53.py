@@ -1,15 +1,16 @@
-import madeira
-import boto3
-
 import uuid
 
+from madeira import session
+import madeira_utils
 
-class Route_53(object):
+
+class Route53(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._logger = logger if logger else madeira.get_logger()
-        self._session = boto3.session.Session(profile_name=profile_name, region_name=region)
-        self.r53_client = self._session.client('route53')
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
+
+        self.r53_client = self._session.session.client('route53')
 
     def create_hosted_zone(self, dns_domain, caller_reference=None):
         caller_reference = caller_reference if caller_reference else uuid.uuid4().hex

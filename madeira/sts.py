@@ -1,20 +1,22 @@
-import madeira
-import boto3
 import configparser
 import os
 import uuid
 
+from madeira import session
+import madeira_utils
+
 
 class Sts(object):
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._session = boto3.session.Session(
-            profile_name=profile_name, region_name=region
-        )
-        self.sts_client = self._session.client("sts")
-        self._logger = logger if logger else madeira.get_logger()
+        self._logger = logger if logger else madeira_utils.get_logger()
+        self._session = session.Session(profile_name=profile_name, region=region)
+        self.sts_client = self._session.session.client("sts")
 
-    def get_account_id(self):
-        return self.sts_client.get_caller_identity().get("Account")
+        # for convenience
+        sts_caller_identity = self.sts_client.get_caller_identity()
+        self.account_id = sts_caller_identity.get("Account")
+        self.user_arn = sts_caller_identity.get("Arn")
+        self.user_id = sts_caller_identity.get("UserId")
 
     def get_access_keys(self, duration=3600):
         token = self.sts_client.get_session_token(DurationSeconds=duration).get(
@@ -26,15 +28,12 @@ class Sts(object):
             token.get("SessionToken"),
         )
 
-    def write_role_credentials(
-        self, aws_profile, role_arn, role_session_name=None, duration=None
-    ):
+    def write_role_credentials(self, aws_profile, role_arn, role_session_name=None, duration=None):
         role_session_name = role_session_name if role_session_name else uuid.uuid4().hex
         creds = self.sts_client.assume_role(
             RoleArn=role_arn,
             RoleSessionName=role_session_name,
-            DurationSeconds=duration,
-        )
+            DurationSeconds=duration)
         aws_creds_file = os.path.expanduser("~/.aws/credentials")
 
         # update the AWS credentials file
