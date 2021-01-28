@@ -18,11 +18,8 @@ class AwsLambda:
     def _create_function(self, name, role, function_file_path, description='', vpc_config=None, memory_size=128,
                          timeout=30, reserved_concurrency=None, layer_arns=None, runtime='python3.8',
                          handler='handler.handler'):
-        if not layer_arns:
-            layer_arns = []
-
-        if not vpc_config:
-            vpc_config = {}
+        layer_arns = layer_arns if layer_arns else []
+        vpc_config = vpc_config if vpc_config else {}
 
         self._logger.info('Deploying function: %s from file: %s', name, function_file_path)
         try:
@@ -57,11 +54,8 @@ class AwsLambda:
     def _update_function(self, name, role, function_file_path, description='', vpc_config=None, memory_size=128,
                          timeout=30, reserved_concurrency=None, layer_arns=None, runtime='python-3.8',
                          handler='handler.handler'):
-        if not layer_arns:
-            layer_arns = []
-
-        if not vpc_config:
-            vpc_config = {}
+        layer_arns = layer_arns if layer_arns else []
+        vpc_config = vpc_config if vpc_config else {}
 
         self._logger.info('%s: updating lambda function code', name)
         self.lambda_client.update_function_code(
@@ -131,15 +125,18 @@ class AwsLambda:
     def create_or_update_function(self, name, role, function_file_path, description='', vpc_config=None,
                                   memory_size=128, timeout=30, reserved_concurrency=None, layers=None,
                                   runtime='python3.8', handler='handler.handler'):
-        layer_arns = [layer_meta['arn'] for name, layer_meta in layers.items()]
-        layers_updated = [name for name, layer_meta in layers.items() if layer_meta['updated']]
+        if layers:
+            layer_arns = [layer_meta['arn'] for name, layer_meta in layers.items()]
+            layers_updated = [name for name, layer_meta in layers.items() if layer_meta['updated']]
+        else:
+            layer_arns = []
+            layers_updated = []
 
         try:
             lambda_function = self.lambda_client.get_function(FunctionName=name)
             self._logger.debug('%s: lambda function: already exists; checking on updates', name)
             function_arn = lambda_function['Configuration']['FunctionArn']
             existing_layers = [layer['Arn'] for layer in lambda_function['Configuration']['Layers']]
-
             added_layers = [layer_arn for layer_arn in layer_arns if layer_arn not in existing_layers]
             removed_layers = [layer_arn for layer_arn in existing_layers if layer_arn not in layer_arns]
 
@@ -238,6 +235,10 @@ class AwsLambda:
             CompatibleRuntimes=runtimes).get('LayerVersionArn')
         self._logger.debug('Layer ARN: %s', layer_arn)
         return {'arn': layer_arn, 'updated': True}
+
+    def deploy_layers(self, layers):
+        for name, layer_meta in layers.items():
+            layers[name].update(self.deploy_layer(name, layer_meta['path']))
 
     def get_function_arn(self, name):
         return f"arn:aws:lambda:{self._session.region}:{self._sts.account_id}:function:{name}"

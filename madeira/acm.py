@@ -15,22 +15,27 @@ class Acm(object):
         self._status_check_interval = 20
 
     def delete_cert_by_domain_name(self, domain_name):
-        certificate_arn = self.get_cert_arn_by_domain(domain_name)
-        if not certificate_arn:
+        cert = self.get_cert_by_domain(domain_name)
+        if not cert:
             self._logger.warning("No ACM certificate exists for domain: %s", domain_name)
             return
 
-        self._logger.info("Deleting certificate for domain: %s with ARN: %s", domain_name, certificate_arn)
-        return self.acm_client.delete_certificate(CertificateArn=certificate_arn)
+        self._logger.info("Deleting certificate for domain: %s with ARN: %s", domain_name, cert['CertificateArn'])
+        return self.acm_client.delete_certificate(CertificateArn=cert['CertificateArn'])
 
-    def get_cert_arn_by_domain(self, domain_name):
+    def get_cert_by_domain(self, domain_name):
         for cert in self.acm_client.list_certificates().get('CertificateSummaryList'):
             if cert['DomainName'] == domain_name:
-                return cert['CertificateArn']
+                return cert
+        return {}
 
-    def request_cert_dns_validation(self, domain_name):
+    def get_cert_dns_validation_meta(self, certificate_arn):
+        return self.acm_client.describe_certificate(CertificateArn=certificate_arn).get('Certificate').get(
+            'DomainValidationOptions')[0].get('ResourceRecord')
+
+    def request_cert_with_dns_validation(self, domain_name):
         # check if cert has already been requested
-        certificate_arn = self.get_cert_arn_by_domain(domain_name)
+        certificate_arn = self.get_cert_by_domain(domain_name).get('CertificateArn')
         if certificate_arn:
             self._logger.info('Certificate with domain: %s has already been requested', domain_name)
         else:
@@ -38,12 +43,12 @@ class Acm(object):
             certificate_arn = self.acm_client.request_certificate(
                 DomainName=domain_name,
                 ValidationMethod='DNS').get('CertificateArn')
+            self._logger.info('Waiting for DNS validation meta to propagate')
+            # TODO: something more intelligent than time.sleep
+            time.sleep(10)
 
         self._logger.debug('Got certificate ARN: %s', certificate_arn)
-        time.sleep(10)
-        return certificate_arn, self.acm_client.describe_certificate(
-            CertificateArn=certificate_arn).get('Certificate').get(
-                'DomainValidationOptions')[0].get('ResourceRecord')
+        return certificate_arn, self.get_cert_dns_validation_meta(certificate_arn)
 
     def wait_for_issuance(self, certificate_arn):
         max_status_checks = 30
@@ -51,7 +56,8 @@ class Acm(object):
 
         # wait for certificate issuance
         status_check = 0
-        self._logger.info('Waiting on ACM certificate issuance confirmation. This may take up to 30 minutes...')
+        self._logger.info('Waiting on ACM certificate issuance confirmation. '
+                          'This may take up to 30 minutes or longer')
 
         while status_check < max_status_checks:
             status_check += 1

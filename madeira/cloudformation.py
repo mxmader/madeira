@@ -1,3 +1,4 @@
+import re
 import time
 
 from madeira import session
@@ -47,7 +48,7 @@ class CloudFormation(object):
                 self._logger.info('%s: cloudformation stack deployment complete', stack['StackName'])
                 return True
 
-            self._logger.debug('%s: status: %s - waiting...', stack['StackName'], stack['StackStatus'])
+            self._logger.info('%s: cloudformation stack status: %s; waiting', stack['StackName'], stack['StackStatus'])
 
             if status_check >= max_status_checks:
                 raise RuntimeError('%s: deployment timed out')
@@ -93,33 +94,26 @@ class CloudFormation(object):
 
     def create_or_update_stack(self, stack_name, template_body, params=None, tags=None, termination_protection=True,
                                max_status_checks=None, status_check_interval=None):
-        try:
-            if self.cf_client.describe_stacks(StackName=stack_name):
+        stack = self.get_stack(stack_name)
+
+        if stack:
+            if stack['StackStatus'] == 'ROLLBACK_COMPLETE':
+                self._logger.info('%s: cleaning up cloudformation stack from failed initial deployment', stack_name)
+                self.delete_stack(stack_name, disable_termination_protection=termination_protection)
+            else:
                 # update the existing stack
                 self._logger.info('%s: cloudformation stack already exists - may need update', stack_name)
                 return self.update_stack(stack_name, template_body, params=params, tags=tags,
                                          max_status_checks=max_status_checks,
                                          status_check_interval=status_check_interval)
 
-        except self.cf_client.exceptions.ClientError as e:
+        # create the stack that does not exist (or was cleaned up)
+        return self.create_stack(stack_name, template_body, params=params, tags=tags,
+                                 termination_protection=termination_protection,
+                                 max_status_checks=max_status_checks,
+                                 status_check_interval=status_check_interval)
 
-            if f'Stack with id {stack_name} does not exist' in str(e):
-                # create the stack that does not exist
-                return self.create_stack(stack_name, template_body, params=params, tags=tags,
-                                         termination_protection=termination_protection,
-                                         max_status_checks=max_status_checks,
-                                         status_check_interval=status_check_interval)
-            else:
-                raise
-
-    def create_bucket_using_cf(
-        self,
-        bucket_name,
-        cf_stack_name,
-        cf_template_file,
-        logging_bucket_name,
-        vpc_id=None,
-    ):
+    def create_bucket_using_cf(self, bucket_name, cf_stack_name, cf_template_file, logging_bucket_name, vpc_id=None):
         with open(cf_template_file, "r") as f:
             template_body = f.read()
 
@@ -137,13 +131,7 @@ class CloudFormation(object):
         self.create_stack(cf_stack_name, template_body, params)
 
     def create_or_update_bucket_using_cf(
-        self,
-        bucket_name,
-        cf_stack_name,
-        cf_template_file,
-        logging_bucket_name,
-        vpc_id=None,
-    ):
+            self, bucket_name, cf_stack_name, cf_template_file, logging_bucket_name, vpc_id=None):
         with open(cf_template_file, "r") as f:
             template_body = f.read()
 
@@ -198,6 +186,10 @@ class CloudFormation(object):
         return self._wait_for_status(stack_name, 'DELETE_COMPLETE', max_status_checks=max_status_checks,
                                      status_check_interval=status_check_interval)
 
+    @staticmethod
+    def get_filtered_stack_name(stack_name):
+        return re.sub(r'[^0-9a-zA-Z]+', '', stack_name.title())
+
     def get_stack(self, stack_name):
         try:
             return self.cf_client.describe_stacks(StackName=stack_name)['Stacks'][0]
@@ -223,12 +215,12 @@ class CloudFormation(object):
                     existing_stack['StackStatus'].startswith('ROLLBACK')):
                 self._logger.error('Stack: %s has status: %s which is impossible to update', stack_name,
                                    existing_stack['StackStatus'])
-                return existing_stack.get('Arn')
+                return existing_stack['StackId']
 
         except self.cf_client.exceptions.ClientError as e:
             if f'Stack with id {stack_name} does not exist' in str(e):
                 self._logger.debug('%s: cloudformation stack does not exist', stack_name)
-                return
+                return False
 
         params = params if params else []
         tags = tags if tags else []
@@ -245,10 +237,10 @@ class CloudFormation(object):
         except self.cf_client.exceptions.ClientError as e:
             if 'No updates are to be performed' in str(e):
                 self._logger.info('%s: cloudformation stack update not required', stack_name)
-                return existing_stack.get('Arn')
+                return existing_stack['StackId']
             else:
                 raise
 
-        self._wait_for_status(stack_name, 'UPDATE_COMPLETE', max_status_checks=max_status_checks,
-                              status_check_interval=status_check_interval)
-        return existing_stack.get('Arn')
+        result = self._wait_for_status(stack_name, 'UPDATE_COMPLETE', max_status_checks=max_status_checks,
+                                       status_check_interval=status_check_interval)
+        return existing_stack['StackId'] if result else False

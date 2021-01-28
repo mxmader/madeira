@@ -182,8 +182,11 @@ class S3(object):
         return bucket_object_list
 
     def get_object_md5_base64(self, bucket_name, object_key):
-        source_object = self.s3_client.get_object(Bucket=bucket_name, Key=object_key)
-        return self.utils.get_base64_sum_of_stream(source_object.get("Body"), hash_type='md5')
+        try:
+            source_object = self.s3_client.get_object(Bucket=bucket_name, Key=object_key)
+            return self.utils.get_base64_sum_of_stream(source_object.get("Body"), hash_type='md5')
+        except self.s3_client.exceptions.NoSuchKey:
+            return ''
 
     def put_object(self, bucket_name, object_key, body, encoding="utf-8", md5=None, as_json=False,
                    content_type=None):

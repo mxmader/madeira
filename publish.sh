@@ -3,7 +3,7 @@
 set -e
 
 echo "cleaning up old builds"
-rm -rf dist/ build/
+rm -rf dist/ build/ ./*.egg-info
 
 # requires "wheel" and "twine" python packages
 python3 setup.py sdist bdist_wheel
