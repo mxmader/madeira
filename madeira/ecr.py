@@ -1,13 +1,13 @@
 import json
 
 from madeira import session, sts
-import madeira_utils
+from madeira_utils import loggers
 
 
 class Ecr(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
-        self._logger = logger if logger else madeira_utils.get_logger()
+        self._logger = logger if logger else loggers.get_logger()
         self._session = session.Session(logger=logger, profile_name=profile_name, region=region)
         self._sts = sts.Sts(logger=logger, profile_name=None, region=None)
 
