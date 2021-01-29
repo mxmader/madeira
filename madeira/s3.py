@@ -156,7 +156,7 @@ class S3(object):
         try:
             self._logger.debug('Loading s3://%s/%s', bucket, object_key)
             return self.s3_client.get_object(Bucket=bucket, Key=object_key)
-        except self.s3_client.exceptions.NoSuchKeyError:
+        except self.s3_client.exceptions.NoSuchKey:
             self._logger.debug("Object not found: s3://%s/%s", bucket, object_key)
             raise
 
