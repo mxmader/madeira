@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 import json
 
 from madeira import session, sts
-from madeira_utils import loggers
+from madeira_utils import loggers, utils
 
 
 class S3(object):
@@ -262,7 +262,7 @@ class S3(object):
 
         # TODO handle object not found exceptions upstream...
         self._logger.debug("%s: processing as %s; binary=%s", local_path, content_type, binary)
-        base64_md5_local = self.utils.get_base64_sum_of_file(local_path, hash_type='md5')
+        base64_md5_local = utils.get_base64_sum_of_file(local_path, hash_type='md5')
         self._logger.debug("%s: Local copy base64 md5: %s", local_path, base64_md5_local)
         base64_md5_in_s3 = self.get_object_md5_base64(bucket, object_key)
         self._logger.debug("%s: S3 object base64 md5: %s", local_path, base64_md5_in_s3)
@@ -272,4 +272,4 @@ class S3(object):
             return False
 
         return self.put_object(
-            bucket, object_key, self.utils.get_file_content(local_path, binary=binary), content_type=content_type)
+            bucket, object_key, utils.get_file_content(local_path, binary=binary), content_type=content_type)
