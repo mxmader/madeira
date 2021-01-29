@@ -156,13 +156,16 @@ class S3(object):
         return folder_objects
 
     def get_object(self, bucket, object_key):
-        return self.s3_client.get_object(Bucket=bucket, Key=object_key)
+        try:
+            self._logger.debug('Loading s3://%s/%s', bucket, object_key)
+            return self.s3_client.get_object(Bucket=bucket, Key=object_key)
+        except self.s3_client.exceptions.NoSuchKeyError:
+            self._logger.debug("Object not found: s3://%s/%s", bucket, object_key)
+            raise
 
     def get_object_contents(self, bucket, object_key, is_json=False):
-        if is_json:
-            return json.loads(self.get_object(bucket, object_key).get('Body').read().decode('utf-8'))
-
-        return self.get_object(bucket, object_key).get('Body').read().decode('utf-8')
+        object_body = self.get_object(bucket, object_key).get('Body').read().decode('utf-8')
+        return json.loads(object_body) if is_json else object_body
 
     def get_old_object_keys(self, bucket, max_age_hours=24, prefix=""):
         """
