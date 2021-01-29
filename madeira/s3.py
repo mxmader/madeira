@@ -184,7 +184,7 @@ class S3(object):
     def get_object_md5_base64(self, bucket_name, object_key):
         try:
             source_object = self.s3_client.get_object(Bucket=bucket_name, Key=object_key)
-            return self.utils.get_base64_sum_of_stream(source_object.get("Body"), hash_type='md5')
+            return utils.get_base64_sum_of_stream(source_object.get("Body"), hash_type='md5')
         except self.s3_client.exceptions.NoSuchKey:
             return ''
 
