@@ -4,7 +4,6 @@ import json
 
 from madeira import session, sts
 from madeira_utils import loggers
-from madeira_utils import utils
 
 
 class S3(object):
@@ -16,8 +15,6 @@ class S3(object):
         self.s3_client = self._session.session.client("s3")
         self.s3_control_client = self._session.session.client("s3control")
         self.s3_resource = self._session.session.resource("s3")
-
-        self.utils = utils.Utils(logger=logger)
 
     @staticmethod
     def _get_retention_end_date(retain_years=7):

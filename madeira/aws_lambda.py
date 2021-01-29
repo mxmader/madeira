@@ -1,7 +1,6 @@
 import time
 
-from madeira_utils import loggers
-from madeira_utils import utils
+from madeira_utils import hashing, loggers, utils
 from madeira import session, sts
 
 
@@ -13,7 +12,6 @@ class AwsLambda:
         self._sts = sts.Sts(logger=logger, profile_name=None, region=None)
 
         self.lambda_client = self._session.session.client('lambda')
-        self.utils = utils.Utils(logger=logger)
 
     def _create_function(self, name, role, function_file_path, description='', vpc_config=None, memory_size=128,
                          timeout=30, reserved_concurrency=None, layer_arns=None, runtime='python3.8',
@@ -28,7 +26,7 @@ class AwsLambda:
                 Runtime=runtime,
                 Role=role,
                 Handler=handler,
-                Code={'ZipFile': self.utils.get_zip_content(function_file_path)},
+                Code={'ZipFile': utils.get_zip_content(function_file_path)},
                 Description=description,
                 Timeout=timeout,
                 Layers=layer_arns,
@@ -60,7 +58,7 @@ class AwsLambda:
         self._logger.info('%s: updating lambda function code', name)
         self.lambda_client.update_function_code(
             FunctionName=name,
-            ZipFile=self.utils.get_zip_content(function_file_path),
+            ZipFile=utils.get_zip_content(function_file_path),
             Publish=True
         )
         self._logger.info('%s: updating lambda function configuration', name)
@@ -141,7 +139,7 @@ class AwsLambda:
             removed_layers = [layer_arn for layer_arn in existing_layers if layer_arn not in layer_arns]
 
             # Calculate the SHA256 checksum of the file (whether a zip file or not)
-            file_sha256_string = self.utils.get_base64_sum_of_file(function_file_path)
+            file_sha256_string = utils.get_base64_sum_of_file(function_file_path)
 
             if function_file_path.endswith('.zip'):
                 aws_file_sha256_string = lambda_function.get('Configuration').get('CodeSha256')
@@ -149,7 +147,7 @@ class AwsLambda:
                 # AWS stores lambdas in zip files in a "hidden" S3 bucket - we need to extract the handler as-stored
                 # in S3 in order to compare it to our local file. This reads the whole encapsulating zip in memory;
                 # we're assuming all lambdas stay relatively small
-                aws_file_sha256_string = self.utils.get_base64_sum_of_file_in_zip_from_url(
+                aws_file_sha256_string = utils.get_base64_sum_of_file_in_zip_from_url(
                     lambda_function.get('Code').get('Location'), 'handler.py')
 
             if file_sha256_string != aws_file_sha256_string:
@@ -210,10 +208,10 @@ class AwsLambda:
 
         # for layers that consist simply of a flat directory (no subdirs) with code (text) files.
         else:
-            in_memory_zip = self.utils.get_layer_zip(layer_path)
+            in_memory_zip = utils.get_layer_zip(layer_path)
             zip_file_bytes = in_memory_zip.getvalue()
 
-        file_sha256_string = self.utils.get_base64_sum_of_data(zip_file_bytes)
+        file_sha256_string = hashing.get_base64_sum_of_data(zip_file_bytes)
 
         for lambda_layer_version in self.list_layer_versions(name):
             layer_version_meta = self.lambda_client.get_layer_version_by_arn(

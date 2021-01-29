@@ -71,14 +71,14 @@
         },
         "madeira": {
             "path": ".",
-            "version": "==1.0.15"
+            "version": "==1.0.16"
         },
         "madeira-utils": {
             "hashes": [
-                "sha256:2b025939fc53b211a8ff0eebc7d101f29312949838f41e79838f867786f92586",
-                "sha256:f4ff50402629b1f229ac897329da7fbbd1011d6f7e32d1a9113836fa4f311c84"
+                "sha256:75466971374b9acd73b1634831da442aa22e5a47849ceeb85ffbbb1d3075e0c0",
+                "sha256:a665c22fedc54c56ad41c14c2f408db06dacc7152db70d3963ca985cccff17c2"
             ],
-            "version": "==1.0.3"
+            "version": "==1.0.4"
         },
         "python-dateutil": {
             "hashes": [
@@ -203,14 +203,14 @@
         },
         "madeira": {
             "path": ".",
-            "version": "==1.0.15"
+            "version": "==1.0.16"
         },
         "madeira-utils": {
             "hashes": [
-                "sha256:2b025939fc53b211a8ff0eebc7d101f29312949838f41e79838f867786f92586",
-                "sha256:f4ff50402629b1f229ac897329da7fbbd1011d6f7e32d1a9113836fa4f311c84"
+                "sha256:75466971374b9acd73b1634831da442aa22e5a47849ceeb85ffbbb1d3075e0c0",
+                "sha256:a665c22fedc54c56ad41c14c2f408db06dacc7152db70d3963ca985cccff17c2"
             ],
-            "version": "==1.0.3"
+            "version": "==1.0.4"
         },
         "python-dateutil": {
             "hashes": [
