@@ -164,6 +164,13 @@ class S3(object):
         object_body = self.get_object(bucket, object_key).get('Body').read().decode('utf-8')
         return json.loads(object_body) if is_json else object_body
 
+    def get_object_md5_base64(self, bucket_name, object_key):
+        try:
+            source_object = self.s3_client.get_object(Bucket=bucket_name, Key=object_key)
+            return utils.get_base64_sum_of_stream(source_object.get("Body"), hash_type='md5')
+        except self.s3_client.exceptions.NoSuchKey:
+            return ''
+
     def get_old_object_keys(self, bucket, max_age_hours=24, prefix=""):
         """
         Returns all s3 keys (objects) older than max-age hours in the named bucket as a
@@ -180,13 +187,6 @@ class S3(object):
                     bucket_object_list.append(key)
 
         return bucket_object_list
-
-    def get_object_md5_base64(self, bucket_name, object_key):
-        try:
-            source_object = self.s3_client.get_object(Bucket=bucket_name, Key=object_key)
-            return utils.get_base64_sum_of_stream(source_object.get("Body"), hash_type='md5')
-        except self.s3_client.exceptions.NoSuchKey:
-            return ''
 
     def put_object(self, bucket_name, object_key, body, encoding="utf-8", md5=None, as_json=False,
                    content_type=None):
