@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
 import json
+import re
 
 from madeira import session, sts
 from madeira_utils import loggers, utils
@@ -244,7 +245,10 @@ class S3(object):
         return changed_files
 
     def upload_asset(self, bucket, file, root):
-        object_key = file
+        key_prefix = re.sub('^assets/*', '', root)
+        if key_prefix:
+            key_prefix += '/'
+        object_key = f"{key_prefix}{file}"
         local_path = f"{root}/{file}"
         binary = False
 
@@ -266,7 +270,6 @@ class S3(object):
         else:
             content_type = 'text/plain'
 
-        # TODO handle object not found exceptions upstream...
         self._logger.debug("%s: processing as %s; binary=%s", local_path, content_type, binary)
         base64_md5_local = utils.get_base64_sum_of_file(local_path, hash_type='md5')
         self._logger.debug("%s: Local copy base64 md5: %s", local_path, base64_md5_local)
