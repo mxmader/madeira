@@ -245,7 +245,7 @@ class S3(object):
 
     def upload_asset(self, bucket, file, root):
         object_key = file
-        local_path = f"{root}{file}"
+        local_path = f"{root}/{file}"
         binary = False
 
         if file.endswith('.html'):
@@ -257,6 +257,12 @@ class S3(object):
         elif file.endswith('.ico'):
             binary = True
             content_type = 'image/x-icon'
+        elif file.endswith('.png'):
+            binary = True
+            content_type = 'image/png'
+        elif file.endswith('.jpg') or file.endswith('jpeg'):
+            binary = True
+            content_type = 'image/jpeg'
         else:
             content_type = 'text/plain'
 
