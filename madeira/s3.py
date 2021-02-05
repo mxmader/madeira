@@ -240,11 +240,12 @@ class S3(object):
     def sync_files(self, bucket, files):
         changed_files = []
         for file in files:
-            result = self.upload_asset(bucket, file['name'], file['root'])
-            changed_files.append(result)
+            result = self.upload_asset_if_changed(bucket, file['name'], file['root'])
+            if result:
+                changed_files.append(result)
         return changed_files
 
-    def upload_asset(self, bucket, file, root):
+    def upload_asset_if_changed(self, bucket, file, root):
         key_prefix = re.sub('^assets/*', '', root)
         if key_prefix:
             key_prefix += '/'
@@ -280,5 +281,7 @@ class S3(object):
             self._logger.info('Checksums of local and S3 copies of %s are identical; skipping', local_path)
             return False
 
-        return self.put_object(
-            bucket, object_key, utils.get_file_content(local_path, binary=binary), content_type=content_type)
+        self.put_object(bucket, object_key, utils.get_file_content(local_path, binary=binary),
+                        content_type=content_type)
+
+        return object_key
