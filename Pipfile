@@ -4,11 +4,10 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
-madeira = {path = ".",editable = true}
-madeira-utils = {path = "../madeira-utils",editable = true}
+madeira-utils-editable = {path = "./../madeira-utils",editable = true}
 
 [packages]
-madeira = {path = "."}
+madeira = {path = ".",editable = true}
 
 [requires]
 python_version = "3.8"
