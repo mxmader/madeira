@@ -3,6 +3,7 @@ from madeira_utils import loggers
 
 session_store = {}
 
+
 class Session(object):
 
     def __init__(self, logger=None, profile_name=None, region=None):
